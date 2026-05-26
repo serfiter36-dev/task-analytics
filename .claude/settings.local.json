@@ -3,7 +3,10 @@
     "allow": [
       "Bash(py test_analyzer.py)",
       "Bash(venv\\\\Scripts\\\\python.exe test_analyzer.py)",
-      "PowerShell(cd \"C:\\\\GitHub\\\\projects\\\\task-analytics\\\\backend\"; $env:PYTHONUTF8=1; .\\\\venv\\\\Scripts\\\\python.exe -X utf8 test_analyzer.py)"
+      "PowerShell(cd \"C:\\\\GitHub\\\\projects\\\\task-analytics\\\\backend\"; $env:PYTHONUTF8=1; .\\\\venv\\\\Scripts\\\\python.exe -X utf8 test_analyzer.py)",
+      "Bash(git commit *)",
+      "Bash(git config *)",
+      "Bash(git add *)"
     ]
   }
 }

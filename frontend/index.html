@@ -188,6 +188,9 @@
     <div class="dash-header">
       <h2>Отчёт по задачам</h2>
       <span class="file-badge" id="file-badge"></span>
+      <select id="g-month" onchange="applyMonthFilter()" style="font-size:13px;padding:6px 12px;border-radius:var(--radius-sm);border:0.5px solid var(--border);background:var(--surface);color:var(--text);">
+        <option value="">Все месяцы</option>
+      </select>
       <div class="spacer"></div>
     </div>
 
@@ -290,8 +293,10 @@ const API_URL = "http://localhost:8000";
 
 // ── STATE ────────────────────────────────────────────────────────────────
 let appData = null;
+let _baseData = null;
 let charts = {};
 const COLORS = ['#378ADD','#1D9E75','#D85A30','#7F77DD','#D4537E','#639922','#BA7517','#E24B4A','#73726c'];
+const MONTHS_RU = {"01":"Январь","02":"Февраль","03":"Март","04":"Апрель","05":"Май","06":"Июнь","07":"Июль","08":"Август","09":"Сентябрь","10":"Октябрь","11":"Ноябрь","12":"Декабрь"};
 
 // ── UPLOAD ───────────────────────────────────────────────────────────────
 function handleDrop(e) {
@@ -318,6 +323,8 @@ async function handleFile(file) {
       throw new Error(err.detail || 'Ошибка сервера');
     }
     appData = await res.json();
+    _baseData = appData;
+    fillMonthSelect();
     document.getElementById('file-badge').textContent = file.name;
     document.getElementById('nav-hint').textContent = file.name;
     document.getElementById('btn-reset').style.display = 'flex';
@@ -333,9 +340,11 @@ async function handleFile(file) {
 
 function resetApp() {
   appData = null;
+  _baseData = null;
   document.getElementById('fileInput').value = '';
   document.getElementById('btn-reset').style.display = 'none';
   document.getElementById('nav-hint').textContent = '';
+  document.getElementById('g-month').innerHTML = '<option value="">Все месяцы</option>';
   hide('dashboard');
   show('upload-section');
   Object.values(charts).forEach(c => c.destroy());
@@ -380,6 +389,74 @@ function makeLegend(id, labels, colors) {
 }
 
 function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+
+// ── MONTH FILTER ─────────────────────────────────────────────────────────
+function fillMonthSelect() {
+  const sel = document.getElementById('g-month');
+  const months = appData.stats.available_months;
+  sel.innerHTML = '<option value="">Все месяцы</option>' +
+    months.map(m => {
+      const [year, mon] = m.split('-');
+      return `<option value="${m}">${MONTHS_RU[mon]} ${year}</option>`;
+    }).join('');
+}
+
+function calcStats(tasks, availableMonths) {
+  const allDays = tasks.filter(t => t.days !== null).map(t => t.days);
+  const assigneeMap = {};
+  const authorMap = {};
+  const weekMap = {};
+  for (const t of tasks) {
+    for (const a of t.assignee.split(',').map(s => s.trim()).filter(Boolean)) {
+      if (!assigneeMap[a]) assigneeMap[a] = { total: 0, days: [] };
+      assigneeMap[a].total++;
+      if (t.days !== null) assigneeMap[a].days.push(t.days);
+    }
+    if (t.author) authorMap[t.author] = (authorMap[t.author] || 0) + 1;
+    if (t.completed) {
+      const d = new Date(t.completed + 'T00:00:00');
+      const dow = d.getDay();
+      const monday = new Date(d);
+      monday.setDate(d.getDate() + (dow === 0 ? -6 : 1 - dow));
+      const key = String(monday.getDate()).padStart(2,'0') + '.' + String(monday.getMonth()+1).padStart(2,'0');
+      weekMap[key] = (weekMap[key] || 0) + 1;
+    }
+  }
+  const bugs = tasks.filter(t => t.is_bug).length;
+  const total = tasks.length;
+  return {
+    summary: {
+      total,
+      avg_days: allDays.length ? Math.round(allDays.reduce((a,b)=>a+b,0)/allDays.length*10)/10 : 0,
+      min_days: allDays.length ? Math.min(...allDays) : 0,
+      max_days: allDays.length ? Math.max(...allDays) : 0,
+      bugs_count: bugs,
+      no_deadline: tasks.filter(t => !t.deadline).length,
+      available_months: availableMonths,
+    },
+    by_assignee: Object.entries(assigneeMap)
+      .map(([name, d]) => ({ name, total: d.total, avg_days: d.days.length ? Math.round(d.days.reduce((a,b)=>a+b,0)/d.days.length*10)/10 : null }))
+      .sort((a,b) => b.total - a.total),
+    by_author: Object.entries(authorMap)
+      .map(([name, total]) => ({ name, total }))
+      .sort((a,b) => b.total - a.total),
+    by_week: Object.entries(weekMap)
+      .sort(([a],[b]) => a > b ? 1 : -1)
+      .map(([week, count]) => ({ week, count })),
+    available_months: availableMonths,
+  };
+}
+
+function applyMonthFilter() {
+  const month = document.getElementById('g-month').value;
+  if (!month) {
+    appData = _baseData;
+  } else {
+    const tasks = _baseData.tasks.filter(t => t.completed && t.completed.startsWith(month));
+    appData = { tasks, stats: calcStats(tasks, _baseData.stats.available_months) };
+  }
+  renderAll();
+}
 
 // ── RENDER ALL ──────────────────────────────────────────────────────────
 function renderAll() {

@@ -158,6 +158,7 @@ def analyze_tasks(df: pd.DataFrame) -> TasksResponse:
     all_days = [t.days for t in tasks if t.days is not None]
     bugs = sum(1 for t in tasks if t.is_bug)
     no_deadline = sum(1 for t in tasks if not t.deadline)
+    available_months = sorted({t.completed[:7] for t in tasks if t.completed})
 
     summary = Summary(
         total=len(tasks),
@@ -166,6 +167,7 @@ def analyze_tasks(df: pd.DataFrame) -> TasksResponse:
         max_days=max(all_days) if all_days else 0,
         bugs_count=bugs,
         no_deadline=no_deadline,
+        available_months=available_months,
     )
 
     by_assignee = sorted([
@@ -194,5 +196,6 @@ def analyze_tasks(df: pd.DataFrame) -> TasksResponse:
             by_assignee=by_assignee,
             by_author=by_author,
             by_week=by_week,
+            available_months=available_months,
         )
     )

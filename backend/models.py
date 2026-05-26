@@ -37,6 +37,7 @@ class Summary(BaseModel):
     max_days: int
     bugs_count: int
     no_deadline: int
+    available_months: list[str]
 
 
 class StatsResponse(BaseModel):
@@ -44,6 +45,7 @@ class StatsResponse(BaseModel):
     by_assignee: list[AssigneeStats]
     by_author: list[AuthorStats]
     by_week: list[WeekStats]
+    available_months: list[str]
 
 
 class TasksResponse(BaseModel):
