@@ -191,6 +191,13 @@
       <select id="g-month" onchange="applyMonthFilter()" style="font-size:13px;padding:6px 12px;border-radius:var(--radius-sm);border:0.5px solid var(--border);background:var(--surface);color:var(--text);">
         <option value="">Все месяцы</option>
       </select>
+      <select id="g-complexity" onchange="applyComplexityFilter()" style="display:none;font-size:13px;padding:6px 12px;border-radius:var(--radius-sm);border:0.5px solid var(--border);background:var(--surface);color:var(--text);">
+        <option value="">Все сложности</option>
+        <option>Лёгкая</option>
+        <option>Средняя</option>
+        <option>Сложная</option>
+        <option>Очень сложная</option>
+      </select>
       <button class="btn" id="btn-ai" onclick="runAIAnalysis()" style="display:none">
         <i class="ti ti-brain" aria-hidden="true"></i> Оценить сложность (AI)
       </button>
@@ -321,6 +328,7 @@ const API_URL = "http://localhost:8000";
 let appData = null;
 let _baseData = null;
 let charts = {};
+let filteredByComplexity = null;
 const COLORS = ['#378ADD','#1D9E75','#D85A30','#7F77DD','#D4537E','#639922','#BA7517','#E24B4A','#73726c'];
 const MONTHS_RU = {"01":"Январь","02":"Февраль","03":"Март","04":"Апрель","05":"Май","06":"Июнь","07":"Июль","08":"Август","09":"Сентябрь","10":"Октябрь","11":"Ноябрь","12":"Декабрь"};
 
@@ -485,7 +493,31 @@ function applyMonthFilter() {
   renderAll();
 }
 
+function showComplexityFilterIfReady() {
+  const hasComplexity = appData.tasks.some(t => t.complexity);
+  document.getElementById('g-complexity').style.display = hasComplexity ? 'inline-block' : 'none';
+}
+
+function applyComplexityFilter() {
+  const cx = document.getElementById('g-complexity').value;
+  if (!cx) {
+    filteredByComplexity = null;
+  } else {
+    filteredByComplexity = appData.tasks.filter(t => t.complexity === cx);
+  }
+  renderAll();
+}
+
 // ── RENDER ALL ──────────────────────────────────────────────────────────
+function getActiveTasks() {
+  let tasks = appData.tasks;
+  const month = document.getElementById('g-month') ? document.getElementById('g-month').value : '';
+  if (month) tasks = tasks.filter(t => t.completed && t.completed.startsWith(month));
+  const cx = document.getElementById('g-complexity') ? document.getElementById('g-complexity').value : '';
+  if (cx) tasks = tasks.filter(t => t.complexity === cx);
+  return tasks;
+}
+
 function renderAll() {
   if (!appData) return;
   renderMetrics();
@@ -494,6 +526,7 @@ function renderAll() {
   fillFilters();
   renderTable();
   renderComplexityChart();
+  showComplexityFilterIfReady();
 }
 
 // ── METRICS ─────────────────────────────────────────────────────────────
@@ -633,7 +666,7 @@ function fillFilters() {
 function renderComplexityChart() {
   const levels = ["Лёгкая","Средняя","Сложная","Очень сложная"];
   const clrs   = ["#1D9E75","#EF9F27","#D85A30","#E24B4A"];
-  const counts = levels.map(l => appData.tasks.filter(t => t.complexity === l).length);
+  const counts = levels.map(l => getActiveTasks().filter(t => t.complexity === l).length);
   const total  = counts.reduce((a,b) => a+b, 0);
 
   const placeholder = document.getElementById('cx-placeholder');
@@ -721,6 +754,7 @@ async function runAIAnalysis() {
     }, 1500);
 
     renderAll();
+    showComplexityFilterIfReady();
   } catch(e) {
     progText.textContent = 'Ошибка: ' + e.message;
     setTimeout(() => {
@@ -739,7 +773,7 @@ function renderTable() {
   const fq = document.getElementById('f-search').value.toLowerCase();
   const fc = document.getElementById('f-complexity') ? document.getElementById('f-complexity').value : '';
 
-  let data = [...appData.tasks];
+  let data = [...getActiveTasks()];
   if (fe) data = data.filter(t => t.assignee.includes(fe));
   if (fa) data = data.filter(t => t.author === fa);
   if (ft === 'bug') data = data.filter(t => t.is_bug);
