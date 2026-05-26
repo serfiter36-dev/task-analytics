@@ -6,7 +6,8 @@
       "PowerShell(cd \"C:\\\\GitHub\\\\projects\\\\task-analytics\\\\backend\"; $env:PYTHONUTF8=1; .\\\\venv\\\\Scripts\\\\python.exe -X utf8 test_analyzer.py)",
       "Bash(git commit *)",
       "Bash(git config *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git push *)"
     ]
   }
 }

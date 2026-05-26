@@ -12,6 +12,9 @@ class Task(BaseModel):
     deadline: Optional[str]
     days: Optional[int]
     is_bug: bool
+    description: str = ""
+    complexity: str = ""
+    reason: str = ""
 
 
 class AssigneeStats(BaseModel):

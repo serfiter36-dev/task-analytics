@@ -153,6 +153,7 @@ def analyze_tasks(df: pd.DataFrame) -> TasksResponse:
             deadline=fmt_date(deadline),
             days=days,
             is_bug=is_bug,
+            description=str(row.get("description", "") or "").strip()[:1000],
         ))
 
     all_days = [t.days for t in tasks if t.days is not None]

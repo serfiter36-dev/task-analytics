@@ -191,6 +191,13 @@
       <select id="g-month" onchange="applyMonthFilter()" style="font-size:13px;padding:6px 12px;border-radius:var(--radius-sm);border:0.5px solid var(--border);background:var(--surface);color:var(--text);">
         <option value="">Все месяцы</option>
       </select>
+      <button class="btn" id="btn-ai" onclick="runAIAnalysis()" style="display:none">
+        <i class="ti ti-brain" aria-hidden="true"></i> Оценить сложность (AI)
+      </button>
+      <div id="ai-progress" style="display:none;font-size:12px;color:var(--text-2);align-items:center;gap:6px;margin-left:8px;">
+        <div class="spinner" style="width:16px;height:16px;border-width:2px;flex-shrink:0;display:inline-block"></div>
+        <span id="ai-progress-text">Анализируем...</span>
+      </div>
       <div class="spacer"></div>
     </div>
 
@@ -228,6 +235,17 @@
           <div id="leg-type" class="legend"></div>
           <div style="position:relative;height:220px"><canvas id="c-type" role="img" aria-label="Ошибки vs доработки"></canvas></div>
         </div>
+        <div class="chart-card">
+          <div class="chart-title"><i class="ti ti-stars" aria-hidden="true"></i> Сложность задач (AI)</div>
+          <div id="cx-placeholder" style="text-align:center;padding:32px 16px;color:var(--text-3);font-size:12px;">
+            <i class="ti ti-brain" style="font-size:28px;display:block;margin-bottom:8px" aria-hidden="true"></i>
+            Нажмите «Оценить сложность (AI)»
+          </div>
+          <div id="leg-complexity" class="legend" style="display:none"></div>
+          <div style="position:relative;height:200px;display:none" id="cx-chart-wrap">
+            <canvas id="c-complexity" role="img" aria-label="Распределение по сложности"></canvas>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -261,6 +279,13 @@
           <option value="days_desc">Время: от большего</option>
           <option value="days_asc">Время: от меньшего</option>
         </select>
+        <select id="f-complexity" onchange="renderTable()">
+          <option value="">Все сложности</option>
+          <option>Лёгкая</option>
+          <option>Средняя</option>
+          <option>Сложная</option>
+          <option>Очень сложная</option>
+        </select>
         <span id="count-label" style="font-size:11px;color:var(--text-3);margin-left:auto"></span>
       </div>
       <div class="chart-card table-wrap">
@@ -274,6 +299,7 @@
               <th>Создана</th>
               <th>Закрыта</th>
               <th>Дней</th>
+              <th>Сложность</th>
             </tr>
           </thead>
           <tbody id="table-body"></tbody>
@@ -330,6 +356,7 @@ async function handleFile(file) {
     document.getElementById('btn-reset').style.display = 'flex';
     hide('loading');
     show('dashboard');
+    document.getElementById('btn-ai').style.display = 'flex';
     renderAll();
   } catch (e) {
     hide('loading');
@@ -466,6 +493,7 @@ function renderAll() {
   renderLeaders();
   fillFilters();
   renderTable();
+  renderComplexityChart();
 }
 
 // ── METRICS ─────────────────────────────────────────────────────────────
@@ -602,6 +630,106 @@ function fillFilters() {
     authors.map(a => `<option>${a}</option>`).join('');
 }
 
+function renderComplexityChart() {
+  const levels = ["Лёгкая","Средняя","Сложная","Очень сложная"];
+  const clrs   = ["#1D9E75","#EF9F27","#D85A30","#E24B4A"];
+  const counts = levels.map(l => appData.tasks.filter(t => t.complexity === l).length);
+  const total  = counts.reduce((a,b) => a+b, 0);
+
+  const placeholder = document.getElementById('cx-placeholder');
+  const wrap = document.getElementById('cx-chart-wrap');
+  const leg  = document.getElementById('leg-complexity');
+
+  if (total === 0) {
+    if (placeholder) placeholder.style.display = 'block';
+    if (wrap) wrap.style.display = 'none';
+    if (leg)  leg.style.display  = 'none';
+    return;
+  }
+
+  if (placeholder) placeholder.style.display = 'none';
+  if (wrap) wrap.style.display = 'block';
+  if (leg)  leg.style.display  = 'flex';
+
+  makeLegend('leg-complexity', levels.map((l,i) => l + ' (' + counts[i] + ')'), clrs);
+  destroyChart('c-complexity');
+  charts['c-complexity'] = new Chart(document.getElementById('c-complexity'), {
+    type: 'doughnut',
+    data: {
+      labels: levels,
+      datasets: [{data: counts, backgroundColor: clrs, borderWidth: 0}]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '60%',
+      plugins: {legend: {display: false}}
+    }
+  });
+}
+
+// ── AI ANALYSIS ──────────────────────────────────────────────────────────
+async function runAIAnalysis() {
+  if (!appData) return;
+  document.getElementById('btn-ai').style.display = 'none';
+  const prog = document.getElementById('ai-progress');
+  const progText = document.getElementById('ai-progress-text');
+  prog.style.display = 'flex';
+  progText.textContent = 'Отправляем ' + appData.tasks.length + ' задач на анализ...';
+
+  const tasks = appData.tasks.map(t => ({
+    id: t.id,
+    title: t.title,
+    description: t.description || ''
+  }));
+
+  try {
+    const res = await fetch(API_URL + '/api/analyze-complexity', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tasks})
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Ошибка сервера');
+    }
+    const data = await res.json();
+
+    const map = {};
+    data.results.forEach(r => { map[r.id] = r; });
+    appData.tasks.forEach(t => {
+      if (map[t.id]) {
+        t.complexity = map[t.id].complexity;
+        t.reason = map[t.id].reason;
+      }
+    });
+    if (_baseData && _baseData !== appData) {
+      _baseData.tasks.forEach(t => {
+        if (map[t.id]) {
+          t.complexity = map[t.id].complexity;
+          t.reason = map[t.id].reason;
+        }
+      });
+    }
+
+    progText.textContent = 'Готово! Оценено ' + data.results.length + ' задач';
+    setTimeout(() => {
+      prog.style.display = 'none';
+      const btn = document.getElementById('btn-ai');
+      btn.style.display = 'flex';
+      btn.innerHTML = '<i class="ti ti-brain" aria-hidden="true"></i> Переоценить (AI)';
+    }, 1500);
+
+    renderAll();
+  } catch(e) {
+    progText.textContent = 'Ошибка: ' + e.message;
+    setTimeout(() => {
+      prog.style.display = 'none';
+      document.getElementById('btn-ai').style.display = 'flex';
+    }, 3000);
+  }
+}
+
 function renderTable() {
   if (!appData) return;
   const fe = document.getElementById('f-exec').value;
@@ -609,12 +737,14 @@ function renderTable() {
   const ft = document.getElementById('f-type').value;
   const fs = document.getElementById('f-sort').value;
   const fq = document.getElementById('f-search').value.toLowerCase();
+  const fc = document.getElementById('f-complexity') ? document.getElementById('f-complexity').value : '';
 
   let data = [...appData.tasks];
   if (fe) data = data.filter(t => t.assignee.includes(fe));
   if (fa) data = data.filter(t => t.author === fa);
   if (ft === 'bug') data = data.filter(t => t.is_bug);
   if (ft === 'task') data = data.filter(t => !t.is_bug);
+  if (fc) data = data.filter(t => t.complexity === fc);
   if (fq) data = data.filter(t => t.title.toLowerCase().includes(fq) || t.id.toLowerCase().includes(fq));
 
   if (fs === 'date_desc') data.sort((a,b) => (b.completed||'') > (a.completed||'') ? 1 : -1);
@@ -630,6 +760,15 @@ function renderTable() {
     const badge = t.is_bug
       ? `<span class="badge badge-bug">Ошибка</span> `
       : `<span class="badge badge-task">Задача</span> `;
+    const cxColors = {
+      "Лёгкая":        "background:#EAF3DE;color:#3B6D11",
+      "Средняя":       "background:#FAEEDA;color:#854F0B",
+      "Сложная":       "background:#FAECE7;color:#993C1D",
+      "Очень сложная": "background:#FCEBEB;color:#A32D2D"
+    };
+    const cxBadge = t.complexity
+      ? `<span class="badge" style="${cxColors[t.complexity]||''}" title="${t.reason||''}">${t.complexity}</span>`
+      : '<span style="color:var(--text-3)">—</span>';
     return `<tr>
       <td style="color:var(--text-3);white-space:nowrap;font-size:11px">${t.id}</td>
       <td>${badge}${t.title}</td>
@@ -638,6 +777,7 @@ function renderTable() {
       <td style="white-space:nowrap;color:var(--text-3)">${t.created ? t.created.slice(5).replace('-','.') : '—'}</td>
       <td style="white-space:nowrap">${t.completed ? t.completed.slice(5).replace('-','.') : '—'}</td>
       <td class="${daysClass}" style="text-align:center">${t.days ?? '—'}</td>
+      <td>${cxBadge}</td>
     </tr>`;
   }).join('');
 }
