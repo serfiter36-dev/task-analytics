@@ -75,7 +75,7 @@ async def save_complexity_to_db(payload: dict):
 
 @app.post("/api/analyze-complexity")
 async def analyze_complexity(payload: dict):
-    import os, json, httpx
+    import os, json, httpx, asyncio
     tasks = payload.get("tasks", [])
     sys.stdout.write(f"=== ANALYZE CALLED: {len(tasks)} tasks ===\n")
     sys.stdout.flush()
@@ -83,35 +83,19 @@ async def analyze_complexity(payload: dict):
     if not api_key:
         raise HTTPException(500, "GROQ_API_KEY не задан в файле backend/.env")
 
-    BATCH_SIZE = 10
+    BATCH_SIZE = 5
     results = []
 
     async with httpx.AsyncClient(timeout=120) as client:
         for i in range(0, len(tasks), BATCH_SIZE):
             batch = tasks[i:i+BATCH_SIZE]
-            batch_data = [
-                {
-                    "id": t["id"],
-                    "title": t["title"],
-                    "description": (t.get("description") or "")[:800]
-                }
-                for t in batch
-            ]
-
-            prompt = f"""Оцени сложность каждой задачи для команды разработчиков 1С.
-Верни ТОЛЬКО валидный JSON массив без markdown, без пояснений, без текста до или после.
-
-Критерии сложности:
-- Лёгкая: косметические правки UI, скрыть/показать поле, права доступа, переименование, добавить простой реквизит
-- Средняя: новый отчёт, доработка формы, простая обработка данных, добавление функционала в существующий объект
-- Сложная: новый функциональный блок, интеграция систем, сложная бизнес-логика, переделка существующего механизма
-- Очень сложная: архитектурные изменения, критические баги в проде с неясной причиной, многоэтапные доработки затрагивающие несколько подсистем
-
-Задачи для оценки:
-{json.dumps(batch_data, ensure_ascii=False)}
-
-Ответь строго в формате JSON массива (без лишнего текста):
-[{{"id": "EVR-001", "complexity": "Средняя", "reason": "Одно предложение обоснования на русском"}}]"""
+            prompt = f"""Оцени сложность задач 1С. Верни ТОЛЬКО JSON массив.
+Лёгкая: правки UI, поля, права, реквизиты
+Средняя: отчёт, доработка формы, новый функционал
+Сложная: новый блок, интеграция, сложная логика
+Очень сложная: архитектура, критические баги, многоэтапные доработки
+{json.dumps([{"id": t["id"], "title": t["title"]} for t in batch], ensure_ascii=False)}
+Формат: [{{"id": "EVR-001", "complexity": "Средняя", "reason": "Обоснование"}}]"""
 
             try:
                 sys.stdout.write(f"=== SENDING BATCH {i//10 + 1}, tasks: {len(batch)} ===\n")
@@ -126,7 +110,7 @@ async def analyze_complexity(payload: dict):
                         "model": "llama-3.1-8b-instant",
                         "messages": [{"role": "user", "content": prompt}],
                         "temperature": 0.1,
-                        "max_tokens": 8000
+                        "max_tokens": 1024
                     }
                 )
                 sys.stdout.write(f"=== HTTP STATUS: {resp.status_code} ===\n")
@@ -157,6 +141,7 @@ async def analyze_complexity(payload: dict):
                 safe_msg = str(e).replace(api_key, "***")
                 for t in batch:
                     results.append({"id": t["id"], "complexity": "Средняя", "reason": f"Ошибка: {safe_msg}"})
+            await asyncio.sleep(4)
 
     return {"results": results}
 
