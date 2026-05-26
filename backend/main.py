@@ -79,9 +79,9 @@ async def analyze_complexity(payload: dict):
     tasks = payload.get("tasks", [])
     sys.stdout.write(f"=== ANALYZE CALLED: {len(tasks)} tasks ===\n")
     sys.stdout.flush()
-    api_key = os.getenv("GEMINI_API_KEY", "")
+    api_key = os.getenv("GROQ_API_KEY", "")
     if not api_key:
-        raise HTTPException(500, "GEMINI_API_KEY не задан в файле backend/.env")
+        raise HTTPException(500, "GROQ_API_KEY не задан в файле backend/.env")
 
     BATCH_SIZE = 10
     results = []
@@ -117,15 +117,16 @@ async def analyze_complexity(payload: dict):
                 sys.stdout.write(f"=== SENDING BATCH {i//10 + 1}, tasks: {len(batch)} ===\n")
                 sys.stdout.flush()
                 resp = await client.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}",
-                    headers={"Content-Type": "application/json"},
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {api_key}"
+                    },
                     json={
-                        "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": {
-                            "temperature": 0.1,
-                            "maxOutputTokens": 8000,
-                            "thinkingConfig": {"thinkingBudget": 0}
-                        }
+                        "model": "llama-3.1-8b-instant",
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.1,
+                        "max_tokens": 8000
                     }
                 )
                 sys.stdout.write(f"=== HTTP STATUS: {resp.status_code} ===\n")
@@ -135,11 +136,11 @@ async def analyze_complexity(payload: dict):
                 resp.raise_for_status()
                 raw_response = resp.json()
                 import json as json_module
-                sys.stdout.write("=== FULL GEMINI RESPONSE ===\n")
+                sys.stdout.write("=== FULL DEEPSEEK RESPONSE ===\n")
                 sys.stdout.write(json_module.dumps(raw_response, ensure_ascii=False, indent=2)[:1000] + "\n")
                 sys.stdout.write("===========================\n")
                 sys.stdout.flush()
-                text = raw_response["candidates"][0]["content"]["parts"][0]["text"].strip()
+                text = raw_response["choices"][0]["message"]["content"].strip()
                 sys.stdout.write("=== TEXT TO PARSE ===\n")
                 sys.stdout.write(repr(text[:500]) + "\n")
                 sys.stdout.write("=====================\n")
