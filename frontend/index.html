@@ -174,6 +174,21 @@
         <code>ID задачи, Название задачи, Автор, Исполнитель / Менеджер, Создана, Дата выполнения, Дедлайн</code>
         Поддерживаются форматы дат: <code>dd.mm.yyyy hh:mm</code>, <code>yyyy-mm-dd</code>
       </div>
+
+      <div id="db-hint" style="display:none; margin-top:20px; padding:12px 14px;
+           background:var(--bg); border:0.5px solid var(--border);
+           border-radius:var(--radius-sm); text-align:left;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <span style="font-size:12px; font-weight:500; color:var(--text-2);">
+            <i class="ti ti-database" style="vertical-align:-2px; margin-right:4px"></i>
+            В базе данных
+          </span>
+          <span id="db-count" style="font-size:12px; color:var(--accent); font-weight:500;"></span>
+        </div>
+        <button class="btn btn-primary" onclick="loadFromDB()" style="width:100%; justify-content:center;">
+          <i class="ti ti-download"></i> Загрузить из базы данных
+        </button>
+      </div>
     </div>
   </div>
 
@@ -755,12 +770,69 @@ async function runAIAnalysis() {
 
     renderAll();
     showComplexityFilterIfReady();
+    fetch(API_URL + '/api/complexity/save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        results: appData.tasks.map(t => ({
+          id: t.id,
+          complexity: t.complexity || '',
+          reason: t.reason || ''
+        }))
+      })
+    });
   } catch(e) {
     progText.textContent = 'Ошибка: ' + e.message;
     setTimeout(() => {
       prog.style.display = 'none';
       document.getElementById('btn-ai').style.display = 'flex';
     }, 3000);
+  }
+}
+
+async function checkDB() {
+  try {
+    const res = await fetch(`${API_URL}/api/db/stats`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const hint = document.getElementById('db-hint');
+    if (data.total > 0) {
+      document.getElementById('db-count').textContent = data.total + ' задач';
+      hint.style.display = 'block';
+    } else {
+      hint.style.display = 'none';
+    }
+  } catch(e) {}
+}
+
+async function loadFromDB() {
+  hide('upload-section');
+  show('loading');
+  try {
+    const res = await fetch(`${API_URL}/api/tasks`);
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Ошибка загрузки из БД');
+    }
+    appData = await res.json();
+    appData.tasks.forEach(t => t.is_bug = !!t.is_bug);
+    _baseData = appData;
+    fillMonthSelect();
+    document.getElementById('file-badge').textContent = 'База данных';
+    document.getElementById('nav-hint').textContent = 'База данных';
+    document.getElementById('btn-reset').style.display = 'flex';
+    hide('loading');
+    show('dashboard');
+    const btn = document.getElementById('btn-ai');
+    btn.style.display = 'flex';
+    if (appData.tasks.some(t => t.complexity)) {
+      btn.innerHTML = '<i class="ti ti-brain" aria-hidden="true"></i> Переоценить (AI)';
+    }
+    renderAll();
+  } catch(e) {
+    hide('loading');
+    show('upload-section');
+    showError(e.message);
   }
 }
 
@@ -815,6 +887,8 @@ function renderTable() {
     </tr>`;
   }).join('');
 }
+
+document.addEventListener('DOMContentLoaded', checkDB);
 </script>
 </body>
 </html>

@@ -200,3 +200,75 @@ def analyze_tasks(df: pd.DataFrame) -> TasksResponse:
             available_months=available_months,
         )
     )
+
+
+def build_stats_from_dicts(tasks: list) -> StatsResponse:
+    assignee_map = defaultdict(lambda: {"total": 0, "days": []})
+    author_map = defaultdict(int)
+    week_map = defaultdict(int)
+
+    for t in tasks:
+        days = t["days"]
+        assignee = t.get("assignee", "") or ""
+        author = t.get("author", "") or ""
+        completed_str = t.get("completed")
+
+        for a in assignee.split(","):
+            a = a.strip()
+            if a:
+                assignee_map[a]["total"] += 1
+                if days is not None:
+                    assignee_map[a]["days"].append(days)
+
+        if author:
+            author_map[author] += 1
+
+        if completed_str:
+            try:
+                completed_dt = datetime.strptime(completed_str[:10], "%Y-%m-%d")
+                monday = completed_dt - timedelta(days=completed_dt.weekday())
+                week_map[monday.strftime("%d.%m")] += 1
+            except ValueError:
+                pass
+
+    all_days = [t["days"] for t in tasks if t["days"] is not None]
+    bugs = sum(1 for t in tasks if bool(t["is_bug"]))
+    no_deadline = sum(1 for t in tasks if not t.get("deadline"))
+    available_months = sorted({t["completed"][:7] for t in tasks if t.get("completed")})
+
+    summary = Summary(
+        total=len(tasks),
+        avg_days=round(sum(all_days) / len(all_days), 1) if all_days else 0,
+        min_days=min(all_days) if all_days else 0,
+        max_days=max(all_days) if all_days else 0,
+        bugs_count=bugs,
+        no_deadline=no_deadline,
+        available_months=available_months,
+    )
+
+    by_assignee = sorted([
+        AssigneeStats(
+            name=name,
+            total=data["total"],
+            avg_days=round(sum(data["days"]) / len(data["days"]), 1) if data["days"] else None,
+        )
+        for name, data in assignee_map.items()
+    ], key=lambda x: -x.total)
+
+    by_author = sorted([
+        AuthorStats(name=name, total=cnt)
+        for name, cnt in author_map.items()
+    ], key=lambda x: -x.total)
+
+    by_week = [
+        WeekStats(week=week, count=cnt)
+        for week, cnt in sorted(week_map.items())
+    ]
+
+    return StatsResponse(
+        summary=summary,
+        by_assignee=by_assignee,
+        by_author=by_author,
+        by_week=by_week,
+        available_months=available_months,
+    )

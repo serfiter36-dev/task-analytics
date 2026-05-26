@@ -11,6 +11,8 @@ import io
 from typing import Optional
 from models import TasksResponse, StatsResponse
 from analyzer import analyze_tasks
+from database import init_db, save_tasks, get_all_tasks, update_complexity, get_stats
+init_db()
 
 app = FastAPI(title="Task Analytics API", version="1.0.0")
 
@@ -43,7 +45,32 @@ async def upload_file(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(422, f"Не удалось прочитать файл: {e}")
 
-    return analyze_tasks(df)
+    result = analyze_tasks(df)
+    save_tasks(result.tasks)
+    return result
+
+
+@app.get("/api/tasks")
+def get_tasks_from_db():
+    from analyzer import build_stats_from_dicts
+    tasks = get_all_tasks()
+    if not tasks:
+        raise HTTPException(404, "База данных пуста")
+    stats = build_stats_from_dicts(tasks)
+    return {"tasks": tasks, "stats": stats}
+
+
+@app.get("/api/db/stats")
+def db_stats():
+    return get_stats()
+
+
+@app.post("/api/complexity/save")
+async def save_complexity_to_db(payload: dict):
+    results = payload.get("results", [])
+    for r in results:
+        update_complexity(r["id"], r.get("complexity", ""), r.get("reason", ""))
+    return {"status": "ok", "updated": len(results)}
 
 
 @app.post("/api/analyze-complexity")

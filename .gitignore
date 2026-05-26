@@ -10,3 +10,4 @@ dist/
 Thumbs.db
 *.xlsx
 *.csv
+backend/tasks.db
