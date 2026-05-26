@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Task Analytics</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.2.0/dist/tabler-icons.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f8f8f6;
+      --surface: #ffffff;
+      --border: rgba(0,0,0,0.1);
+      --text: #1a1a1a;
+      --text-2: #666;
+      --text-3: #999;
+      --accent: #378ADD;
+      --green: #1D9E75;
+      --red: #E24B4A;
+      --amber: #EF9F27;
+      --radius: 10px;
+      --radius-sm: 6px;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); font-size: 14px; min-height: 100vh; }
+
+    /* ── NAVBAR ── */
+    nav { background: var(--surface); border-bottom: 0.5px solid var(--border); padding: 0 24px; height: 52px; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 100; }
+    nav .logo { font-weight: 600; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+    nav .logo i { color: var(--accent); font-size: 20px; }
+    nav .spacer { flex: 1; }
+    nav .nav-hint { font-size: 12px; color: var(--text-3); }
+
+    /* ── LAYOUT ── */
+    .container { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+
+    /* ── UPLOAD ── */
+    #upload-section { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; }
+    .upload-card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 48px 40px; text-align: center; max-width: 480px; width: 100%; }
+    .upload-card h1 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+    .upload-card p { color: var(--text-2); font-size: 13px; margin-bottom: 28px; line-height: 1.6; }
+    .dropzone { border: 1.5px dashed var(--border); border-radius: var(--radius); padding: 32px 20px; cursor: pointer; transition: background 0.15s; margin-bottom: 16px; }
+    .dropzone:hover, .dropzone.drag { background: #f0f4ff; border-color: var(--accent); }
+    .dropzone i { font-size: 32px; color: var(--text-3); display: block; margin-bottom: 10px; }
+    .dropzone .dz-title { font-weight: 500; margin-bottom: 4px; }
+    .dropzone .dz-sub { font-size: 12px; color: var(--text-3); }
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; border-radius: var(--radius-sm); border: 0.5px solid var(--border); background: var(--surface); cursor: pointer; font-size: 13px; color: var(--text); transition: background 0.12s; }
+    .btn:hover { background: var(--bg); }
+    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn-primary:hover { background: #2a72c3; }
+    .format-hint { margin-top: 16px; background: #f4f4f2; border-radius: var(--radius-sm); padding: 12px 14px; text-align: left; font-size: 12px; color: var(--text-2); display: none; }
+    .format-hint code { font-family: monospace; display: block; margin-top: 6px; line-height: 1.7; color: var(--text); }
+
+    /* ── LOADING ── */
+    #loading { display: none; text-align: center; padding: 80px 0; }
+    .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 16px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── ERROR ── */
+    #error-box { display: none; background: #fef2f2; border: 0.5px solid #fca5a5; border-radius: var(--radius-sm); padding: 12px 16px; color: #b91c1c; font-size: 13px; margin-bottom: 16px; }
+
+    /* ── DASHBOARD ── */
+    #dashboard { display: block; }
+    .dash-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+    .dash-header h2 { font-size: 16px; font-weight: 600; }
+    .dash-header .file-badge { font-size: 12px; color: var(--text-2); background: var(--bg); border: 0.5px solid var(--border); border-radius: 20px; padding: 3px 10px; }
+    .dash-header .spacer { flex: 1; }
+
+    /* ── METRICS ── */
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+    .metric { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+    .metric-label { font-size: 11px; color: var(--text-2); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .metric-val { font-size: 24px; font-weight: 600; line-height: 1; }
+    .metric-sub { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+
+    /* ── TABS ── */
+    .tabs { display: flex; gap: 0; border-bottom: 0.5px solid var(--border); margin-bottom: 16px; }
+    .tab { padding: 8px 16px; font-size: 13px; cursor: pointer; color: var(--text-2); border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color 0.1s; }
+    .tab.active { color: var(--text); border-bottom-color: var(--text); font-weight: 500; }
+    .tab:hover { color: var(--text); }
+
+    /* ── CHARTS ── */
+    .charts-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+    .chart-card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+    .chart-card.full { grid-column: 1 / -1; }
+    .chart-title { font-size: 12px; font-weight: 500; color: var(--text-2); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+    .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-2); }
+    .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+    /* ── FILTERS ── */
+    .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+    .filters select, .filters input[type="text"] { font-size: 12px; padding: 6px 10px; border-radius: var(--radius-sm); border: 0.5px solid var(--border); background: var(--surface); color: var(--text); outline: none; }
+    .filters select:focus, .filters input:focus { border-color: var(--accent); }
+    .filter-label { font-size: 11px; color: var(--text-3); }
+
+    /* ── TABLE ── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; padding: 7px 10px; border-bottom: 0.5px solid var(--border); font-size: 11px; font-weight: 500; color: var(--text-2); white-space: nowrap; cursor: pointer; user-select: none; }
+    th:hover { color: var(--text); }
+    th .sort-icon { font-size: 10px; margin-left: 3px; opacity: 0.4; }
+    th.sorted .sort-icon { opacity: 1; }
+    td { padding: 7px 10px; border-bottom: 0.5px solid var(--border); color: var(--text); vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafaf8; }
+    .badge { display: inline-block; font-size: 10px; padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
+    .badge-bug { background: #fef2f2; color: #b91c1c; }
+    .badge-task { background: #f0fdf4; color: #166534; }
+    .days-fast { color: var(--green); font-weight: 500; }
+    .days-slow { color: var(--red); font-weight: 500; }
+
+    /* ── LEADERBOARD ── */
+    .leader-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 0.5px solid var(--border); }
+    .leader-row:last-child { border-bottom: none; }
+    .leader-rank { font-size: 18px; width: 28px; text-align: center; flex-shrink: 0; }
+    .leader-name { font-weight: 500; font-size: 13px; flex: 1; }
+    .leader-stats { display: flex; gap: 20px; }
+    .leader-stat { text-align: right; }
+    .leader-stat .val { font-size: 15px; font-weight: 600; }
+    .leader-stat .lbl { font-size: 10px; color: var(--text-3); }
+    .bar-bg { height: 4px; background: var(--bg); border-radius: 2px; margin-top: 4px; width: 80px; }
+    .bar-fill { height: 4px; border-radius: 2px; }
+
+    @media (max-width: 600px) {
+      .metrics { grid-template-columns: 1fr 1fr; }
+      .charts-2 { grid-template-columns: 1fr; }
+      .leader-stats { gap: 10px; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="logo"><i class="ti ti-chart-bar"></i> Task Analytics</div>
+  <div class="spacer"></div>
+  <span class="nav-hint" id="nav-hint"></span>
+  <button class="btn" id="btn-reset" style="display:none" onclick="resetApp()">
+    <i class="ti ti-upload"></i> Новый файл
+  </button>
+</nav>
+
+<div class="container">
+
+  <!-- UPLOAD -->
+  <div id="upload-section">
+    <div class="upload-card">
+      <h1>Аналитика задач</h1>
+      <p>Загрузи выгрузку из таск-менеджера в формате .xlsx или .csv — получишь статистику, графики и лидерборд.</p>
+
+      <div id="error-box"></div>
+
+      <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()"
+           ondragover="event.preventDefault();this.classList.add('drag')"
+           ondragleave="this.classList.remove('drag')"
+           ondrop="handleDrop(event)">
+        <i class="ti ti-file-spreadsheet"></i>
+        <div class="dz-title">Перетащи файл или нажми для выбора</div>
+        <div class="dz-sub">.xlsx или .csv</div>
+      </div>
+      <input type="file" id="fileInput" accept=".xlsx,.csv" style="display:none" onchange="handleFile(this.files[0])">
+
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+          <i class="ti ti-upload"></i> Выбрать файл
+        </button>
+        <button class="btn" onclick="toggleHint()">
+          <i class="ti ti-info-circle"></i> Формат файла
+        </button>
+      </div>
+
+      <div class="format-hint" id="format-hint">
+        Ожидаемые колонки (названия гибкие, авто-маппинг):
+        <code>ID задачи, Название задачи, Автор, Исполнитель / Менеджер, Создана, Дата выполнения, Дедлайн</code>
+        Поддерживаются форматы дат: <code>dd.mm.yyyy hh:mm</code>, <code>yyyy-mm-dd</code>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOADING -->
+  <div id="loading">
+    <div class="spinner"></div>
+    <div style="color:var(--text-2);font-size:13px">Анализируем данные...</div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dashboard">
+    <div class="dash-header">
+      <h2>Отчёт по задачам</h2>
+      <span class="file-badge" id="file-badge"></span>
+      <div class="spacer"></div>
+    </div>
+
+    <div class="metrics" id="metrics"></div>
+
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('charts',this)">Графики</div>
+      <div class="tab" onclick="switchTab('leaders',this)">Лидерборд</div>
+      <div class="tab" onclick="switchTab('tasks',this)">Все задачи</div>
+    </div>
+
+    <!-- CHARTS TAB -->
+    <div id="tab-charts">
+      <div class="charts-2">
+        <div class="chart-card">
+          <div class="chart-title"><i class="ti ti-chart-bar"></i> Задачи по исполнителям</div>
+          <div id="leg-assignee" class="legend"></div>
+          <div style="position:relative;height:220px"><canvas id="c-assignee" role="img" aria-label="Задачи по исполнителям"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title"><i class="ti ti-users"></i> Задачи по авторам</div>
+          <div id="leg-author" class="legend"></div>
+          <div style="position:relative;height:220px"><canvas id="c-author" role="img" aria-label="Задачи по авторам"></canvas></div>
+        </div>
+        <div class="chart-card full">
+          <div class="chart-title"><i class="ti ti-trending-up"></i> Закрыто задач по неделям</div>
+          <div style="position:relative;height:160px"><canvas id="c-weeks" role="img" aria-label="Закрыто по неделям"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title"><i class="ti ti-clock"></i> Среднее время выполнения (дни)</div>
+          <div style="position:relative;height:220px"><canvas id="c-avgtime" role="img" aria-label="Среднее время по исполнителю"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title"><i class="ti ti-chart-donut"></i> Тип задач</div>
+          <div id="leg-type" class="legend"></div>
+          <div style="position:relative;height:220px"><canvas id="c-type" role="img" aria-label="Ошибки vs доработки"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LEADERS TAB -->
+    <div id="tab-leaders" style="display:none">
+      <div class="chart-card" style="margin-bottom:14px">
+        <div class="chart-title"><i class="ti ti-trophy"></i> Рейтинг исполнителей — по количеству задач</div>
+        <div id="leaders-list"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title"><i class="ti ti-pencil"></i> Авторы — кто ставит больше задач</div>
+        <div id="authors-list"></div>
+      </div>
+    </div>
+
+    <!-- TASKS TAB -->
+    <div id="tab-tasks" style="display:none">
+      <div class="filters">
+        <i class="ti ti-filter" style="color:var(--text-3);font-size:15px"></i>
+        <input type="text" id="f-search" placeholder="Поиск по названию..." oninput="renderTable()" style="width:180px">
+        <select id="f-exec" onchange="renderTable()"><option value="">Все исполнители</option></select>
+        <select id="f-author" onchange="renderTable()"><option value="">Все авторы</option></select>
+        <select id="f-type" onchange="renderTable()">
+          <option value="">Все типы</option>
+          <option value="bug">Ошибки</option>
+          <option value="task">Доработки</option>
+        </select>
+        <select id="f-sort" onchange="renderTable()">
+          <option value="date_desc">Закрыты: новые</option>
+          <option value="date_asc">Закрыты: старые</option>
+          <option value="days_desc">Время: от большего</option>
+          <option value="days_asc">Время: от меньшего</option>
+        </select>
+        <span id="count-label" style="font-size:11px;color:var(--text-3);margin-left:auto"></span>
+      </div>
+      <div class="chart-card table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th style="min-width:220px">Название</th>
+              <th>Автор</th>
+              <th>Исполнитель</th>
+              <th>Создана</th>
+              <th>Закрыта</th>
+              <th>Дней</th>
+            </tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /dashboard -->
+</div><!-- /container -->
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────────────
+// При деплое замените на URL вашего backend на Render:
+const API_URL = "http://localhost:8000";
+// Для локальной разработки:
+// const API_URL = "http://localhost:8000";
+
+// ── STATE ────────────────────────────────────────────────────────────────
+let appData = null;
+let charts = {};
+const COLORS = ['#378ADD','#1D9E75','#D85A30','#7F77DD','#D4537E','#639922','#BA7517','#E24B4A','#73726c'];
+
+// ── UPLOAD ───────────────────────────────────────────────────────────────
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropzone').classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+}
+
+async function handleFile(file) {
+  if (!file) return;
+  showError('');
+  hide('upload-section');
+  hide('dashboard');
+  show('loading');
+
+  const form = new FormData();
+  form.append('file', file);
+
+  try {
+    const res = await fetch(`${API_URL}/api/upload`, { method: 'POST', body: form });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Ошибка сервера');
+    }
+    appData = await res.json();
+    document.getElementById('file-badge').textContent = file.name;
+    document.getElementById('nav-hint').textContent = file.name;
+    document.getElementById('btn-reset').style.display = 'flex';
+    hide('loading');
+    show('dashboard');
+    renderAll();
+  } catch (e) {
+    hide('loading');
+    show('upload-section');
+    showError(e.message);
+  }
+}
+
+function resetApp() {
+  appData = null;
+  document.getElementById('fileInput').value = '';
+  document.getElementById('btn-reset').style.display = 'none';
+  document.getElementById('nav-hint').textContent = '';
+  hide('dashboard');
+  show('upload-section');
+  Object.values(charts).forEach(c => c.destroy());
+  charts = {};
+  switchTabByName('charts');
+}
+
+function toggleHint() {
+  const h = document.getElementById('format-hint');
+  h.style.display = h.style.display === 'block' ? 'none' : 'block';
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-box');
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+// ── HELPERS ──────────────────────────────────────────────────────────────
+function show(id) {
+  const el = document.getElementById(id);
+  el.style.display = id === 'dashboard' ? 'block' : '';
+}
+function hide(id) { document.getElementById(id).style.display = 'none'; }
+
+function switchTab(name, el) {
+  ['charts','leaders','tasks'].forEach(t => {
+    document.getElementById('tab-'+t).style.display = t===name ? 'block' : 'none';
+  });
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+}
+
+function switchTabByName(name) {
+  switchTab(name, document.querySelector(`.tab[onclick*="${name}"]`));
+}
+
+function makeLegend(id, labels, colors) {
+  document.getElementById(id).innerHTML = labels.map((l,i) =>
+    `<div class="legend-item"><span class="legend-dot" style="background:${colors[i%colors.length]}"></span>${l}</div>`
+  ).join('');
+}
+
+function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+
+// ── RENDER ALL ──────────────────────────────────────────────────────────
+function renderAll() {
+  if (!appData) return;
+  renderMetrics();
+  renderCharts();
+  renderLeaders();
+  fillFilters();
+  renderTable();
+}
+
+// ── METRICS ─────────────────────────────────────────────────────────────
+function renderMetrics() {
+  const s = appData.stats.summary;
+  document.getElementById('metrics').innerHTML = `
+    <div class="metric">
+      <div class="metric-label">Всего задач</div>
+      <div class="metric-val">${s.total}</div>
+      <div class="metric-sub">в файле</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Среднее время</div>
+      <div class="metric-val">${s.avg_days}</div>
+      <div class="metric-sub">дней на задачу</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Ошибки в проде</div>
+      <div class="metric-val" style="color:var(--red)">${s.bugs_count}</div>
+      <div class="metric-sub">${Math.round(s.bugs_count/s.total*100)}% от всех</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Макс. время</div>
+      <div class="metric-val">${s.max_days}</div>
+      <div class="metric-sub">дней (самая долгая)</div>
+    </div>
+  `;
+}
+
+// ── CHARTS ───────────────────────────────────────────────────────────────
+function renderCharts() {
+  const { by_assignee, by_author, by_week, summary } = appData.stats;
+
+  // Исполнители
+  const aNames = by_assignee.map(a => a.name);
+  const aCounts = by_assignee.map(a => a.total);
+  destroyChart('c-assignee');
+  makeLegend('leg-assignee', aNames.map((n,i) => `${n} (${aCounts[i]})`), COLORS);
+  charts['c-assignee'] = new Chart(document.getElementById('c-assignee'), {
+    type: 'bar',
+    data: { labels: aNames, datasets: [{ data: aCounts, backgroundColor: COLORS.slice(0,aNames.length), borderRadius: 4 }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{ticks:{font:{size:11}}}, y:{beginAtZero:true} } }
+  });
+
+  // Авторы
+  const auNames = by_author.map(a => a.name);
+  const auCounts = by_author.map(a => a.total);
+  destroyChart('c-author');
+  makeLegend('leg-author', auNames.map((n,i) => `${n} (${auCounts[i]})`), COLORS);
+  charts['c-author'] = new Chart(document.getElementById('c-author'), {
+    type: 'doughnut',
+    data: { labels: auNames, datasets: [{ data: auCounts, backgroundColor: COLORS.slice(0,auNames.length), borderWidth:0 }] },
+    options: { responsive:true, maintainAspectRatio:false, cutout:'60%', plugins:{legend:{display:false}} }
+  });
+
+  // По неделям
+  const wLabels = by_week.map(w => 'нед. '+w.week);
+  const wCounts = by_week.map(w => w.count);
+  destroyChart('c-weeks');
+  charts['c-weeks'] = new Chart(document.getElementById('c-weeks'), {
+    type: 'bar',
+    data: { labels: wLabels, datasets: [{ data: wCounts, backgroundColor: '#378ADD', borderRadius: 4 }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{ticks:{font:{size:12}}}, y:{beginAtZero:true} } }
+  });
+
+  // Среднее время
+  const atData = by_assignee.filter(a => a.avg_days !== null && a.total >= 2);
+  destroyChart('c-avgtime');
+  charts['c-avgtime'] = new Chart(document.getElementById('c-avgtime'), {
+    type: 'bar',
+    data: { labels: atData.map(a=>a.name), datasets: [{ data: atData.map(a=>a.avg_days), backgroundColor: COLORS.slice(0,atData.length), borderRadius:4 }] },
+    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{beginAtZero:true,ticks:{font:{size:11}}}, y:{ticks:{font:{size:11}}} } }
+  });
+
+  // Тип задач
+  const bugs = summary.bugs_count;
+  const tasks = summary.total - bugs;
+  const tc = [COLORS[7], COLORS[0]];
+  makeLegend('leg-type', [`Ошибки (${bugs})`, `Доработки (${tasks})`], tc);
+  destroyChart('c-type');
+  charts['c-type'] = new Chart(document.getElementById('c-type'), {
+    type: 'doughnut',
+    data: { labels: ['Ошибки','Доработки'], datasets: [{ data: [bugs, tasks], backgroundColor: tc, borderWidth:0 }] },
+    options: { responsive:true, maintainAspectRatio:false, cutout:'60%', plugins:{legend:{display:false}} }
+  });
+}
+
+// ── LEADERS ──────────────────────────────────────────────────────────────
+function renderLeaders() {
+  const { by_assignee, by_author } = appData.stats;
+  const maxTotal = by_assignee[0]?.total || 1;
+
+  document.getElementById('leaders-list').innerHTML = by_assignee.map((a, i) => {
+    const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}`;
+    const pct = Math.round(a.total / maxTotal * 100);
+    return `<div class="leader-row">
+      <div class="leader-rank">${medal}</div>
+      <div style="flex:1">
+        <div class="leader-name">${a.name}</div>
+        <div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:${COLORS[i%COLORS.length]}"></div></div>
+      </div>
+      <div class="leader-stats">
+        <div class="leader-stat"><div class="val">${a.total}</div><div class="lbl">задач</div></div>
+        <div class="leader-stat"><div class="val">${a.avg_days ?? '—'}</div><div class="lbl">дней avg</div></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const total = appData.stats.summary.total;
+  document.getElementById('authors-list').innerHTML = by_author.map((a, i) => {
+    const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}`;
+    return `<div class="leader-row">
+      <div class="leader-rank">${medal}</div>
+      <div class="leader-name">${a.name}</div>
+      <div class="leader-stats">
+        <div class="leader-stat"><div class="val">${a.total}</div><div class="lbl">задач</div></div>
+        <div class="leader-stat"><div class="val">${Math.round(a.total/total*100)}%</div><div class="lbl">доля</div></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── TABLE ────────────────────────────────────────────────────────────────
+function fillFilters() {
+  const assignees = [...new Set(appData.tasks.flatMap(t => t.assignee.split(',').map(a=>a.trim())))].sort();
+  const authors = [...new Set(appData.tasks.map(t => t.author))].sort();
+
+  const selExec = document.getElementById('f-exec');
+  selExec.innerHTML = '<option value="">Все исполнители</option>' +
+    assignees.map(a => `<option>${a}</option>`).join('');
+
+  const selAuthor = document.getElementById('f-author');
+  selAuthor.innerHTML = '<option value="">Все авторы</option>' +
+    authors.map(a => `<option>${a}</option>`).join('');
+}
+
+function renderTable() {
+  if (!appData) return;
+  const fe = document.getElementById('f-exec').value;
+  const fa = document.getElementById('f-author').value;
+  const ft = document.getElementById('f-type').value;
+  const fs = document.getElementById('f-sort').value;
+  const fq = document.getElementById('f-search').value.toLowerCase();
+
+  let data = [...appData.tasks];
+  if (fe) data = data.filter(t => t.assignee.includes(fe));
+  if (fa) data = data.filter(t => t.author === fa);
+  if (ft === 'bug') data = data.filter(t => t.is_bug);
+  if (ft === 'task') data = data.filter(t => !t.is_bug);
+  if (fq) data = data.filter(t => t.title.toLowerCase().includes(fq) || t.id.toLowerCase().includes(fq));
+
+  if (fs === 'date_desc') data.sort((a,b) => (b.completed||'') > (a.completed||'') ? 1 : -1);
+  if (fs === 'date_asc')  data.sort((a,b) => (a.completed||'') > (b.completed||'') ? 1 : -1);
+  if (fs === 'days_desc') data.sort((a,b) => (b.days||0) - (a.days||0));
+  if (fs === 'days_asc')  data.sort((a,b) => (a.days||0) - (b.days||0));
+
+  document.getElementById('count-label').textContent = `${data.length} из ${appData.tasks.length}`;
+
+  const avgDays = appData.stats.summary.avg_days;
+  document.getElementById('table-body').innerHTML = data.map(t => {
+    const daysClass = t.days !== null ? (t.days > avgDays * 1.5 ? 'days-slow' : t.days < 3 ? 'days-fast' : '') : '';
+    const badge = t.is_bug
+      ? `<span class="badge badge-bug">Ошибка</span> `
+      : `<span class="badge badge-task">Задача</span> `;
+    return `<tr>
+      <td style="color:var(--text-3);white-space:nowrap;font-size:11px">${t.id}</td>
+      <td>${badge}${t.title}</td>
+      <td style="white-space:nowrap">${t.author}</td>
+      <td style="white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis">${t.assignee}</td>
+      <td style="white-space:nowrap;color:var(--text-3)">${t.created ? t.created.slice(5).replace('-','.') : '—'}</td>
+      <td style="white-space:nowrap">${t.completed ? t.completed.slice(5).replace('-','.') : '—'}</td>
+      <td class="${daysClass}" style="text-align:center">${t.days ?? '—'}</td>
+    </tr>`;
+  }).join('');
+}
+</script>
+</body>
+</html>
