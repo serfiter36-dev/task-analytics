@@ -1,6 +1,9 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
+
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
@@ -47,11 +50,13 @@ async def upload_file(file: UploadFile = File(...)):
 async def analyze_complexity(payload: dict):
     import os, json, httpx
     tasks = payload.get("tasks", [])
+    sys.stdout.write(f"=== ANALYZE CALLED: {len(tasks)} tasks ===\n")
+    sys.stdout.flush()
     api_key = os.getenv("GEMINI_API_KEY", "")
     if not api_key:
         raise HTTPException(500, "GEMINI_API_KEY не задан в файле backend/.env")
 
-    BATCH_SIZE = 25
+    BATCH_SIZE = 10
     results = []
 
     async with httpx.AsyncClient(timeout=120) as client:
@@ -82,32 +87,48 @@ async def analyze_complexity(payload: dict):
 [{{"id": "EVR-001", "complexity": "Средняя", "reason": "Одно предложение обоснования на русском"}}]"""
 
             try:
+                sys.stdout.write(f"=== SENDING BATCH {i//10 + 1}, tasks: {len(batch)} ===\n")
+                sys.stdout.flush()
                 resp = await client.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}",
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}",
                     headers={"Content-Type": "application/json"},
                     json={
                         "contents": [{"parts": [{"text": prompt}]}],
                         "generationConfig": {
                             "temperature": 0.1,
-                            "maxOutputTokens": 4000,
-                            "responseMimeType": "application/json"
+                            "maxOutputTokens": 8000,
+                            "thinkingConfig": {"thinkingBudget": 0}
                         }
                     }
                 )
+                sys.stdout.write(f"=== HTTP STATUS: {resp.status_code} ===\n")
+                sys.stdout.flush()
+                sys.stdout.write(f"=== RESP BODY START: {resp.text[:200]} ===\n")
+                sys.stdout.flush()
                 resp.raise_for_status()
-                text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                raw_response = resp.json()
+                import json as json_module
+                sys.stdout.write("=== FULL GEMINI RESPONSE ===\n")
+                sys.stdout.write(json_module.dumps(raw_response, ensure_ascii=False, indent=2)[:1000] + "\n")
+                sys.stdout.write("===========================\n")
+                sys.stdout.flush()
+                text = raw_response["candidates"][0]["content"]["parts"][0]["text"].strip()
+                sys.stdout.write("=== TEXT TO PARSE ===\n")
+                sys.stdout.write(repr(text[:500]) + "\n")
+                sys.stdout.write("=====================\n")
+                sys.stdout.flush()
                 if "```" in text:
                     text = text.split("```")[1]
                     if text.startswith("json"):
                         text = text[4:]
                 batch_results = json.loads(text.strip())
                 results.extend(batch_results)
-            except json.JSONDecodeError:
-                for t in batch:
-                    results.append({"id": t["id"], "complexity": "Средняя", "reason": "Ошибка парсинга ответа AI"})
             except Exception as e:
+                sys.stdout.write(f"=== EXCEPTION: {type(e).__name__}: {str(e)[:200]} ===\n")
+                sys.stdout.flush()
+                safe_msg = str(e).replace(api_key, "***")
                 for t in batch:
-                    results.append({"id": t["id"], "complexity": "Средняя", "reason": f"Ошибка: {str(e)}"})
+                    results.append({"id": t["id"], "complexity": "Средняя", "reason": f"Ошибка: {safe_msg}"})
 
     return {"results": results}
 
