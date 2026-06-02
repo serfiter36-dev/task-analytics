@@ -122,6 +122,18 @@
     .bar-bg { height: 4px; background: var(--bg); border-radius: 2px; margin-top: 4px; width: 80px; }
     .bar-fill { height: 4px; border-radius: 2px; }
 
+    /* ── MULTI-SELECT FILTER ── */
+    .ms-wrap { position: relative; }
+    .ms-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 6px 12px; border-radius: var(--radius-sm); border: 0.5px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; white-space: nowrap; }
+    .ms-btn:hover { background: var(--bg); }
+    .ms-wrap.ms-active .ms-btn { border-color: var(--accent); color: var(--accent); }
+    .ms-dropdown { display: none; position: absolute; top: calc(100% + 4px); left: 0; background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 4px 16px rgba(0,0,0,0.1); z-index: 200; min-width: 190px; max-height: 240px; overflow-y: auto; padding: 4px 0; }
+    .ms-wrap.ms-open .ms-dropdown { display: block; }
+    .ms-item { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; color: var(--text); user-select: none; }
+    .ms-item:hover { background: var(--bg); }
+    .ms-item input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); flex-shrink: 0; }
+    .ms-sep { height: 0.5px; background: var(--border); margin: 4px 0; }
+
     @media (max-width: 600px) {
       .metrics { grid-template-columns: 1fr 1fr; }
       .charts-2 { grid-template-columns: 1fr; }
@@ -213,6 +225,20 @@
         <option>Сложная</option>
         <option>Очень сложная</option>
       </select>
+      <div class="ms-wrap" id="ms-assignee" style="display:none">
+        <button class="ms-btn" onclick="toggleMs('ms-assignee');event.stopPropagation()">
+          <span id="ms-assignee-label">Все исполнители</span>
+          <i class="ti ti-chevron-down" style="font-size:11px"></i>
+        </button>
+        <div class="ms-dropdown" id="ms-assignee-list"></div>
+      </div>
+      <div class="ms-wrap" id="ms-author" style="display:none">
+        <button class="ms-btn" onclick="toggleMs('ms-author');event.stopPropagation()">
+          <span id="ms-author-label">Все авторы</span>
+          <i class="ti ti-chevron-down" style="font-size:11px"></i>
+        </button>
+        <div class="ms-dropdown" id="ms-author-list"></div>
+      </div>
       <button class="btn" id="btn-ai" onclick="runAIAnalysis()" style="display:none">
         <i class="ti ti-brain" aria-hidden="true"></i> Оценить сложность (AI)
       </button>
@@ -229,6 +255,7 @@
       <div class="tab active" onclick="switchTab('charts',this)">Графики</div>
       <div class="tab" onclick="switchTab('leaders',this)">Лидерборд</div>
       <div class="tab" onclick="switchTab('tasks',this)">Все задачи</div>
+      <div class="tab" onclick="switchTab('employee',this)">Аналитика сотрудника</div>
     </div>
 
     <!-- CHARTS TAB -->
@@ -329,6 +356,48 @@
       </div>
     </div>
 
+    <!-- EMPLOYEE TAB -->
+    <div id="tab-employee" style="display:none">
+      <div style="margin-bottom:16px">
+        <select id="emp-select" onchange="renderEmployeeTab()" style="font-size:13px;padding:6px 12px;border-radius:var(--radius-sm);border:0.5px solid var(--border);background:var(--surface);color:var(--text);min-width:200px">
+          <option value="">Выберите сотрудника</option>
+        </select>
+      </div>
+      <div id="emp-content" style="display:none">
+        <div class="metrics" id="emp-metrics" style="margin-bottom:14px"></div>
+        <div class="charts-2" style="margin-bottom:14px">
+          <div class="chart-card">
+            <div class="chart-title"><i class="ti ti-chart-bar"></i> Задачи по месяцам</div>
+            <div style="position:relative;height:200px"><canvas id="emp-c-months" role="img" aria-label="Задачи по месяцам"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-title"><i class="ti ti-clock"></i> Среднее время по месяцам (дни)</div>
+            <div style="position:relative;height:200px"><canvas id="emp-c-avgtime" role="img" aria-label="Среднее время по месяцам"></canvas></div>
+          </div>
+          <div class="chart-card" id="emp-complexity-wrap" style="display:none">
+            <div class="chart-title"><i class="ti ti-chart-donut"></i> Сложность задач</div>
+            <div id="emp-leg-complexity" class="legend"></div>
+            <div style="position:relative;height:200px"><canvas id="emp-c-complexity" role="img" aria-label="Сложность задач"></canvas></div>
+          </div>
+        </div>
+        <div class="chart-card table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th style="min-width:220px">Название</th>
+                <th>Создана</th>
+                <th>Закрыта</th>
+                <th style="text-align:center">Дней</th>
+                <th>Сложность</th>
+              </tr>
+            </thead>
+            <tbody id="emp-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /dashboard -->
 </div><!-- /container -->
 
@@ -344,6 +413,57 @@ let appData = null;
 let _baseData = null;
 let charts = {};
 let filteredByComplexity = null;
+let selectedAssignees = new Set();
+let selectedAuthors = new Set();
+
+function toggleMs(id) {
+  const wrap = document.getElementById(id);
+  const isOpen = wrap.classList.contains('ms-open');
+  document.querySelectorAll('.ms-wrap').forEach(w => w.classList.remove('ms-open'));
+  if (!isOpen) wrap.classList.add('ms-open');
+}
+document.addEventListener('click', () => {
+  document.querySelectorAll('.ms-wrap').forEach(w => w.classList.remove('ms-open'));
+});
+
+function buildMs(id, items, selectedSet, allLabel) {
+  const list = document.getElementById(id + '-list');
+  list.innerHTML =
+    `<label class="ms-item"><input type="checkbox" data-all="1" ${selectedSet.size === 0 ? 'checked' : ''} onchange="msToggleAll('${id}', this)"> ${allLabel}</label>` +
+    `<div class="ms-sep"></div>` +
+    items.map(v =>
+      `<label class="ms-item"><input type="checkbox" value="${escHtml(v)}" ${selectedSet.has(v) ? 'checked' : ''} onchange="msToggleItem('${id}', this)"> ${escHtml(v)}</label>`
+    ).join('');
+  updateMsLabel(id, selectedSet, allLabel);
+}
+
+function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function msToggleItem(id, cb) {
+  const set = id === 'ms-assignee' ? selectedAssignees : selectedAuthors;
+  if (cb.checked) set.add(cb.value); else set.delete(cb.value);
+  const allCb = document.querySelector(`#${id}-list input[data-all]`);
+  if (allCb) allCb.checked = set.size === 0;
+  updateMsLabel(id, set, id === 'ms-assignee' ? 'Все исполнители' : 'Все авторы');
+  renderAll();
+}
+
+function msToggleAll(id, cb) {
+  const set = id === 'ms-assignee' ? selectedAssignees : selectedAuthors;
+  set.clear();
+  document.querySelectorAll(`#${id}-list input:not([data-all])`).forEach(c => c.checked = false);
+  cb.checked = true;
+  updateMsLabel(id, set, id === 'ms-assignee' ? 'Все исполнители' : 'Все авторы');
+  renderAll();
+}
+
+function updateMsLabel(id, set, allLabel) {
+  const el = document.getElementById(id + '-label');
+  if (!el) return;
+  const base = id === 'ms-assignee' ? 'Исполнители' : 'Авторы';
+  el.textContent = set.size === 0 ? allLabel : `${base} (${set.size})`;
+  document.getElementById(id)?.classList.toggle('ms-active', set.size > 0);
+}
 const COLORS = ['#378ADD','#1D9E75','#D85A30','#7F77DD','#D4537E','#639922','#BA7517','#E24B4A','#73726c'];
 const MONTHS_RU = {"01":"Январь","02":"Февраль","03":"Март","04":"Апрель","05":"Май","06":"Июнь","07":"Июль","08":"Август","09":"Сентябрь","10":"Октябрь","11":"Ноябрь","12":"Декабрь"};
 
@@ -395,6 +515,10 @@ function resetApp() {
   document.getElementById('btn-reset').style.display = 'none';
   document.getElementById('nav-hint').textContent = '';
   document.getElementById('g-month').innerHTML = '<option value="">Все месяцы</option>';
+  selectedAssignees.clear();
+  selectedAuthors.clear();
+  document.getElementById('ms-assignee').style.display = 'none';
+  document.getElementById('ms-author').style.display = 'none';
   hide('dashboard');
   show('upload-section');
   Object.values(charts).forEach(c => c.destroy());
@@ -421,7 +545,7 @@ function show(id) {
 function hide(id) { document.getElementById(id).style.display = 'none'; }
 
 function switchTab(name, el) {
-  ['charts','leaders','tasks'].forEach(t => {
+  ['charts','leaders','tasks','employee'].forEach(t => {
     document.getElementById('tab-'+t).style.display = t===name ? 'block' : 'none';
   });
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -526,10 +650,14 @@ function applyComplexityFilter() {
 // ── RENDER ALL ──────────────────────────────────────────────────────────
 function getActiveTasks() {
   let tasks = appData.tasks;
-  const month = document.getElementById('g-month') ? document.getElementById('g-month').value : '';
+  const month = document.getElementById('g-month')?.value || '';
   if (month) tasks = tasks.filter(t => t.completed && t.completed.startsWith(month));
-  const cx = document.getElementById('g-complexity') ? document.getElementById('g-complexity').value : '';
+  const cx = document.getElementById('g-complexity')?.value || '';
   if (cx) tasks = tasks.filter(t => t.complexity === cx);
+  if (selectedAssignees.size > 0)
+    tasks = tasks.filter(t => (t.assignee || '').split(',').map(a => a.trim()).some(a => selectedAssignees.has(a)));
+  if (selectedAuthors.size > 0)
+    tasks = tasks.filter(t => selectedAuthors.has(t.author));
   return tasks;
 }
 
@@ -542,38 +670,83 @@ function renderAll() {
   renderTable();
   renderComplexityChart();
   showComplexityFilterIfReady();
+  fillEmployeeSelect();
 }
 
 // ── METRICS ─────────────────────────────────────────────────────────────
 function renderMetrics() {
-  const s = appData.stats.summary;
+  const tasks = getActiveTasks();
+  const total = tasks.length;
+  const days = tasks.map(t => t.days).filter(d => d !== null && d !== undefined);
+  const avg_days = days.length ? Math.round(days.reduce((a,b) => a+b, 0) / days.length * 10) / 10 : 0;
+  const max_days = days.length ? Math.max(...days) : 0;
+  const bugs = tasks.filter(t => t.is_bug).length;
+
   document.getElementById('metrics').innerHTML = `
     <div class="metric">
       <div class="metric-label">Всего задач</div>
-      <div class="metric-val">${s.total}</div>
+      <div class="metric-val">${total}</div>
       <div class="metric-sub">в файле</div>
     </div>
     <div class="metric">
       <div class="metric-label">Среднее время</div>
-      <div class="metric-val">${s.avg_days}</div>
+      <div class="metric-val">${avg_days}</div>
       <div class="metric-sub">дней на задачу</div>
     </div>
     <div class="metric">
       <div class="metric-label">Ошибки в проде</div>
-      <div class="metric-val" style="color:var(--red)">${s.bugs_count}</div>
-      <div class="metric-sub">${Math.round(s.bugs_count/s.total*100)}% от всех</div>
+      <div class="metric-val" style="color:var(--red)">${bugs}</div>
+      <div class="metric-sub">${total ? Math.round(bugs/total*100) : 0}% от всех</div>
     </div>
     <div class="metric">
       <div class="metric-label">Макс. время</div>
-      <div class="metric-val">${s.max_days}</div>
+      <div class="metric-val">${max_days}</div>
       <div class="metric-sub">дней (самая долгая)</div>
     </div>
   `;
 }
 
 // ── CHARTS ───────────────────────────────────────────────────────────────
+function computeAggregates(tasks) {
+  const aMap = {};
+  tasks.forEach(t => {
+    (t.assignee || '').split(',').map(a => a.trim()).filter(Boolean).forEach(name => {
+      if (!aMap[name]) aMap[name] = { name, total: 0, days: [] };
+      aMap[name].total++;
+      if (t.days != null) aMap[name].days.push(t.days);
+    });
+  });
+  const by_assignee = Object.values(aMap)
+    .map(a => ({ ...a, avg_days: a.days.length ? Math.round(a.days.reduce((s,d)=>s+d,0)/a.days.length*10)/10 : null }))
+    .sort((a,b) => b.total - a.total);
+
+  const auMap = {};
+  tasks.forEach(t => {
+    if (!t.author) return;
+    if (!auMap[t.author]) auMap[t.author] = { name: t.author, total: 0 };
+    auMap[t.author].total++;
+  });
+  const by_author = Object.values(auMap).sort((a,b) => b.total - a.total);
+
+  const wMap = {};
+  tasks.forEach(t => {
+    if (!t.completed) return;
+    const d = new Date(t.completed);
+    const jan1 = new Date(d.getFullYear(), 0, 1);
+    const week = String(Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7)).padStart(2, '0');
+    if (!wMap[week]) wMap[week] = { week, count: 0 };
+    wMap[week].count++;
+  });
+  const by_week = Object.values(wMap).sort((a,b) => a.week.localeCompare(b.week));
+
+  return { by_assignee, by_author, by_week };
+}
+
 function renderCharts() {
-  const { by_assignee, by_author, by_week, summary } = appData.stats;
+  const tasks = getActiveTasks();
+  const { by_assignee, by_author, by_week } = computeAggregates(tasks);
+  const bugs = tasks.filter(t => t.is_bug).length;
+  const nonBugs = tasks.length - bugs;
 
   // Исполнители
   const aNames = by_assignee.map(a => a.name);
@@ -598,12 +771,10 @@ function renderCharts() {
   });
 
   // По неделям
-  const wLabels = by_week.map(w => 'нед. '+w.week);
-  const wCounts = by_week.map(w => w.count);
   destroyChart('c-weeks');
   charts['c-weeks'] = new Chart(document.getElementById('c-weeks'), {
     type: 'bar',
-    data: { labels: wLabels, datasets: [{ data: wCounts, backgroundColor: '#378ADD', borderRadius: 4 }] },
+    data: { labels: by_week.map(w => 'нед. '+w.week), datasets: [{ data: by_week.map(w => w.count), backgroundColor: '#378ADD', borderRadius: 4 }] },
     options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{ticks:{font:{size:12}}}, y:{beginAtZero:true} } }
   });
 
@@ -617,21 +788,21 @@ function renderCharts() {
   });
 
   // Тип задач
-  const bugs = summary.bugs_count;
-  const tasks = summary.total - bugs;
   const tc = [COLORS[7], COLORS[0]];
-  makeLegend('leg-type', [`Ошибки (${bugs})`, `Доработки (${tasks})`], tc);
+  makeLegend('leg-type', [`Ошибки (${bugs})`, `Доработки (${nonBugs})`], tc);
   destroyChart('c-type');
   charts['c-type'] = new Chart(document.getElementById('c-type'), {
     type: 'doughnut',
-    data: { labels: ['Ошибки','Доработки'], datasets: [{ data: [bugs, tasks], backgroundColor: tc, borderWidth:0 }] },
+    data: { labels: ['Ошибки','Доработки'], datasets: [{ data: [bugs, nonBugs], backgroundColor: tc, borderWidth:0 }] },
     options: { responsive:true, maintainAspectRatio:false, cutout:'60%', plugins:{legend:{display:false}} }
   });
 }
 
 // ── LEADERS ──────────────────────────────────────────────────────────────
 function renderLeaders() {
-  const { by_assignee, by_author } = appData.stats;
+  const tasks = getActiveTasks();
+  const { by_assignee, by_author } = computeAggregates(tasks);
+  const total = tasks.length;
   const maxTotal = by_assignee[0]?.total || 1;
 
   document.getElementById('leaders-list').innerHTML = by_assignee.map((a, i) => {
@@ -650,7 +821,6 @@ function renderLeaders() {
     </div>`;
   }).join('');
 
-  const total = appData.stats.summary.total;
   document.getElementById('authors-list').innerHTML = by_author.map((a, i) => {
     const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}`;
     return `<div class="leader-row">
@@ -658,7 +828,7 @@ function renderLeaders() {
       <div class="leader-name">${a.name}</div>
       <div class="leader-stats">
         <div class="leader-stat"><div class="val">${a.total}</div><div class="lbl">задач</div></div>
-        <div class="leader-stat"><div class="val">${Math.round(a.total/total*100)}%</div><div class="lbl">доля</div></div>
+        <div class="leader-stat"><div class="val">${total ? Math.round(a.total/total*100) : 0}%</div><div class="lbl">доля</div></div>
       </div>
     </div>`;
   }).join('');
@@ -666,8 +836,9 @@ function renderLeaders() {
 
 // ── TABLE ────────────────────────────────────────────────────────────────
 function fillFilters() {
-  const assignees = [...new Set(appData.tasks.flatMap(t => t.assignee.split(',').map(a=>a.trim())))].sort();
-  const authors = [...new Set(appData.tasks.map(t => t.author))].sort();
+  const allTasks = (_baseData || appData).tasks;
+  const assignees = [...new Set(allTasks.flatMap(t => (t.assignee || '').split(',').map(a=>a.trim()).filter(Boolean)))].sort();
+  const authors = [...new Set(allTasks.map(t => t.author).filter(Boolean))].sort();
 
   const selExec = document.getElementById('f-exec');
   selExec.innerHTML = '<option value="">Все исполнители</option>' +
@@ -676,6 +847,11 @@ function fillFilters() {
   const selAuthor = document.getElementById('f-author');
   selAuthor.innerHTML = '<option value="">Все авторы</option>' +
     authors.map(a => `<option>${a}</option>`).join('');
+
+  buildMs('ms-assignee', assignees, selectedAssignees, 'Все исполнители');
+  buildMs('ms-author', authors, selectedAuthors, 'Все авторы');
+  document.getElementById('ms-assignee').style.display = 'inline-block';
+  document.getElementById('ms-author').style.display = 'inline-block';
 }
 
 function renderComplexityChart() {
@@ -883,6 +1059,127 @@ function renderTable() {
       <td style="white-space:nowrap;color:var(--text-3)">${t.created ? t.created.slice(5).replace('-','.') : '—'}</td>
       <td style="white-space:nowrap">${t.completed ? t.completed.slice(5).replace('-','.') : '—'}</td>
       <td class="${daysClass}" style="text-align:center">${t.days ?? '—'}</td>
+      <td>${cxBadge}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── EMPLOYEE ANALYTICS ───────────────────────────────────────────────────
+function fillEmployeeSelect() {
+  const tasks = (_baseData || appData)?.tasks || [];
+  const assignees = [...new Set(
+    tasks.flatMap(t => (t.assignee || '').split(',').map(a => a.trim()).filter(Boolean))
+  )].sort();
+  const sel = document.getElementById('emp-select');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Выберите сотрудника</option>' +
+    assignees.map(a => `<option${a === cur ? ' selected' : ''}>${escHtml(a)}</option>`).join('');
+}
+
+function renderEmployeeTab() {
+  const name = document.getElementById('emp-select').value;
+  const content = document.getElementById('emp-content');
+  if (!name || !appData) { content.style.display = 'none'; return; }
+  content.style.display = 'block';
+
+  const tasks = appData.tasks.filter(t => (t.assignee || '').includes(name));
+
+  // Metrics
+  const days = tasks.map(t => t.days).filter(d => d !== null && d !== undefined);
+  const total = tasks.length;
+  const avg_days = days.length ? Math.round(days.reduce((a,b) => a+b,0)/days.length*10)/10 : 0;
+  const max_days = days.length ? Math.max(...days) : 0;
+  const bugs = tasks.filter(t => t.is_bug).length;
+  document.getElementById('emp-metrics').innerHTML = `
+    <div class="metric">
+      <div class="metric-label">Всего задач</div>
+      <div class="metric-val">${total}</div>
+      <div class="metric-sub">задач у сотрудника</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Среднее время</div>
+      <div class="metric-val">${avg_days}</div>
+      <div class="metric-sub">дней на задачу</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Ошибки в проде</div>
+      <div class="metric-val" style="color:var(--red)">${bugs}</div>
+      <div class="metric-sub">${total ? Math.round(bugs/total*100) : 0}% от всех</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Макс. время</div>
+      <div class="metric-val">${max_days}</div>
+      <div class="metric-sub">дней (самая долгая)</div>
+    </div>
+  `;
+
+  // Build month buckets from t.completed
+  const monthMap = {};
+  const avgMap = {};
+  tasks.forEach(t => {
+    if (!t.completed) return;
+    const m = t.completed.slice(0, 7); // yyyy-mm
+    if (!monthMap[m]) { monthMap[m] = 0; avgMap[m] = []; }
+    monthMap[m]++;
+    if (t.days !== null && t.days !== undefined) avgMap[m].push(t.days);
+  });
+  const months = Object.keys(monthMap).sort();
+  const monthLabels = months.map(m => {
+    const [y, mo] = m.split('-');
+    return (MONTHS_RU[mo] || mo) + ' ' + y.slice(2);
+  });
+
+  destroyChart('emp-c-months');
+  charts['emp-c-months'] = new Chart(document.getElementById('emp-c-months'), {
+    type: 'bar',
+    data: { labels: monthLabels, datasets: [{ data: months.map(m => monthMap[m]), backgroundColor: '#378ADD', borderRadius: 4 }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{ticks:{font:{size:11}}}, y:{beginAtZero:true,ticks:{precision:0}} } }
+  });
+
+  destroyChart('emp-c-avgtime');
+  charts['emp-c-avgtime'] = new Chart(document.getElementById('emp-c-avgtime'), {
+    type: 'bar',
+    data: { labels: monthLabels, datasets: [{ data: months.map(m => avgMap[m].length ? Math.round(avgMap[m].reduce((a,b)=>a+b,0)/avgMap[m].length*10)/10 : 0), backgroundColor: '#1D9E75', borderRadius: 4 }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{ticks:{font:{size:11}}}, y:{beginAtZero:true} } }
+  });
+
+  // Complexity doughnut (only if data exists)
+  const levels = ["Лёгкая","Средняя","Сложная","Очень сложная"];
+  const clrs = ["#1D9E75","#EF9F27","#D85A30","#E24B4A"];
+  const hasComplexity = tasks.some(t => t.complexity);
+  const cxWrap = document.getElementById('emp-complexity-wrap');
+  if (hasComplexity) {
+    cxWrap.style.display = 'block';
+    const counts = levels.map(l => tasks.filter(t => t.complexity === l).length);
+    makeLegend('emp-leg-complexity', levels.map((l,i) => l + ' (' + counts[i] + ')'), clrs);
+    destroyChart('emp-c-complexity');
+    charts['emp-c-complexity'] = new Chart(document.getElementById('emp-c-complexity'), {
+      type: 'doughnut',
+      data: { labels: levels, datasets: [{ data: counts, backgroundColor: clrs, borderWidth: 0 }] },
+      options: { responsive:true, maintainAspectRatio:false, cutout:'60%', plugins:{legend:{display:false}} }
+    });
+  } else {
+    cxWrap.style.display = 'none';
+  }
+
+  // Table
+  const cxColors = {
+    "Лёгкая":        "background:#EAF3DE;color:#3B6D11",
+    "Средняя":       "background:#FAEEDA;color:#854F0B",
+    "Сложная":       "background:#FAECE7;color:#993C1D",
+    "Очень сложная": "background:#FCEBEB;color:#A32D2D"
+  };
+  const sorted = [...tasks].sort((a,b) => (b.completed||'') > (a.completed||'') ? 1 : -1);
+  document.getElementById('emp-table-body').innerHTML = sorted.map(t => {
+    const cxBadge = t.complexity
+      ? `<span class="badge" style="${cxColors[t.complexity]||''}">${t.complexity}</span>`
+      : '<span style="color:var(--text-3)">—</span>';
+    return `<tr>
+      <td style="color:var(--text-3);white-space:nowrap;font-size:11px">${t.id}</td>
+      <td>${escHtml(t.title)}</td>
+      <td style="white-space:nowrap;color:var(--text-3)">${t.created ? t.created.slice(5).replace('-','.') : '—'}</td>
+      <td style="white-space:nowrap">${t.completed ? t.completed.slice(5).replace('-','.') : '—'}</td>
+      <td style="text-align:center">${t.days ?? '—'}</td>
       <td>${cxBadge}</td>
     </tr>`;
   }).join('');
