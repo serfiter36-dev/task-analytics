@@ -287,7 +287,6 @@
       <div class="tab" onclick="switchTab('leaders',this)">Лидерборд</div>
       <div class="tab" onclick="switchTab('tasks',this)">Все задачи</div>
       <div class="tab" onclick="switchTab('employee',this)">Аналитика сотрудника</div>
-      <div class="tab" onclick="switchTab('groups',this)">Группы</div>
     </div>
 
     <!-- CHARTS TAB -->
@@ -330,6 +329,14 @@
           <div style="position:relative;height:200px;display:none" id="cx-chart-wrap">
             <canvas id="c-complexity" role="img" aria-label="Распределение по сложности"></canvas>
           </div>
+        </div>
+        <div class="chart-card full">
+          <div class="chart-title"><i class="ti ti-category"></i> Задачи по функциональным группам</div>
+          <div style="position:relative;min-height:160px"><canvas id="grp-c-groups" role="img" aria-label="Задачи по группам"></canvas></div>
+        </div>
+        <div class="chart-card full">
+          <div class="chart-title"><i class="ti ti-layers"></i> Задачи по линиям поддержки</div>
+          <div style="position:relative;min-height:160px"><canvas id="grp-c-lines" role="img" aria-label="Задачи по линиям"></canvas></div>
         </div>
       </div>
     </div>
@@ -437,44 +444,6 @@
       </div>
     </div>
 
-    <!-- GROUPS TAB -->
-    <div id="tab-groups" style="display:none">
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
-        <select id="grp-fg-select" onchange="renderGroupsTab()" style="font-size:13px;padding:6px 12px;border-radius:var(--radius-sm);border:0.5px solid var(--border);background:var(--surface);color:var(--text);min-width:220px">
-          <option value="">Все функциональные группы</option>
-        </select>
-        <select id="grp-sl-select" onchange="renderGroupsTab()" style="font-size:13px;padding:6px 12px;border-radius:var(--radius-sm);border:0.5px solid var(--border);background:var(--surface);color:var(--text);min-width:200px">
-          <option value="">Все линии поддержки</option>
-        </select>
-      </div>
-      <div class="metrics" id="grp-metrics" style="margin-bottom:14px;grid-template-columns:repeat(3,1fr)"></div>
-      <div class="charts-2" style="margin-bottom:14px">
-        <div class="chart-card">
-          <div class="chart-title"><i class="ti ti-category"></i> Задачи по функциональным группам</div>
-          <div style="position:relative;min-height:160px"><canvas id="grp-c-groups" role="img" aria-label="Задачи по группам"></canvas></div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-title"><i class="ti ti-layers"></i> Задачи по линиям поддержки</div>
-          <div style="position:relative;min-height:160px"><canvas id="grp-c-lines" role="img" aria-label="Задачи по линиям"></canvas></div>
-        </div>
-      </div>
-      <div class="chart-card table-wrap" style="margin-bottom:14px">
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th style="min-width:200px">Название</th>
-              <th>Группа</th>
-              <th>Линия</th>
-              <th>Исполнитель</th>
-              <th>Закрыта</th>
-              <th style="text-align:center">Дней</th>
-            </tr>
-          </thead>
-          <tbody id="grp-table-body"></tbody>
-        </table>
-      </div>
-    </div>
 
   </div><!-- /dashboard -->
 </div><!-- /container -->
@@ -669,7 +638,7 @@ function show(id) {
 function hide(id) { document.getElementById(id).style.display = 'none'; }
 
 function switchTab(name, el) {
-  ['charts','leaders','tasks','employee','groups'].forEach(t => {
+  ['charts','leaders','tasks','employee'].forEach(t => {
     document.getElementById('tab-'+t).style.display = t===name ? 'block' : 'none';
   });
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -802,8 +771,6 @@ function renderAll() {
   showComplexityFilterIfReady();
   fillEmployeeSelect();
   renderEmployeeTab();
-  fillGroupSelects();
-  renderGroupsTab();
 }
 
 // ── METRICS ─────────────────────────────────────────────────────────────
@@ -928,6 +895,36 @@ function renderCharts() {
     type: 'doughnut',
     data: { labels: ['Ошибки','Доработки'], datasets: [{ data: [bugs, nonBugs], backgroundColor: tc, borderWidth:0 }] },
     options: { responsive:true, maintainAspectRatio:false, cutout:'60%', plugins:{legend:{display:false}} }
+  });
+
+  // Задачи по функциональным группам
+  const fgMap = {};
+  tasks.forEach(t => { if (t.func_group) fgMap[t.func_group] = (fgMap[t.func_group]||0)+1; });
+  const fgKeys = Object.keys(fgMap).sort((a,b) => fgMap[b]-fgMap[a]);
+  destroyChart('grp-c-groups');
+  const fgH = Math.max(160, fgKeys.length * 30);
+  document.getElementById('grp-c-groups').style.height = fgH + 'px';
+  charts['grp-c-groups'] = new Chart(document.getElementById('grp-c-groups'), {
+    type: 'bar',
+    data: { labels: fgKeys, datasets: [{ data: fgKeys.map(k=>fgMap[k]), backgroundColor: '#378ADD', borderRadius:4 }] },
+    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false} },
+      scales:{ x:{grid:{display:false}}, y:{grid:{display:false},ticks:{font:{size:11}}} } }
+  });
+
+  // Задачи по линиям поддержки
+  const slMap = {};
+  tasks.forEach(t => { if (t.support_line) slMap[t.support_line] = (slMap[t.support_line]||0)+1; });
+  const slKeys = Object.keys(slMap).sort((a,b) => slMap[b]-slMap[a]);
+  destroyChart('grp-c-lines');
+  const slH = Math.max(160, slKeys.length * 30);
+  document.getElementById('grp-c-lines').style.height = slH + 'px';
+  charts['grp-c-lines'] = new Chart(document.getElementById('grp-c-lines'), {
+    type: 'bar',
+    data: { labels: slKeys, datasets: [{ data: slKeys.map(k=>slMap[k]), backgroundColor: '#1D9E75', borderRadius:4 }] },
+    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false} },
+      scales:{ x:{grid:{display:false}}, y:{grid:{display:false},ticks:{font:{size:11}}} } }
   });
 }
 
@@ -1341,94 +1338,6 @@ function renderEmployeeTab() {
   }).join('');
 }
 
-// ── GROUPS TAB ───────────────────────────────────────────────────────────
-function fillGroupSelects() {
-  const tasks = (_baseData || appData)?.tasks || [];
-  const fgs = [...new Set(tasks.map(t => t.func_group).filter(Boolean))].sort();
-  const sls = [...new Set(tasks.map(t => t.support_line).filter(Boolean))].sort();
-
-  const fgSel = document.getElementById('grp-fg-select');
-  const slSel = document.getElementById('grp-sl-select');
-  const curFg = fgSel.value;
-  const curSl = slSel.value;
-
-  fgSel.innerHTML = '<option value="">Все функциональные группы</option>' +
-    fgs.map(v => `<option${v === curFg ? ' selected' : ''}>${escHtml(v)}</option>`).join('');
-  slSel.innerHTML = '<option value="">Все линии поддержки</option>' +
-    sls.map(v => `<option${v === curSl ? ' selected' : ''}>${escHtml(v)}</option>`).join('');
-}
-
-function renderGroupsTab() {
-  if (!appData) return;
-  let base = getActiveTasks();
-
-  const fgVal = document.getElementById('grp-fg-select')?.value || '';
-  const slVal = document.getElementById('grp-sl-select')?.value || '';
-  let tasks = base;
-  if (fgVal) tasks = tasks.filter(t => t.func_group === fgVal);
-  if (slVal) tasks = tasks.filter(t => t.support_line === slVal);
-
-  // Metrics
-  const total = tasks.length;
-  const allDays = tasks.map(t => t.days).filter(d => d !== null && d !== undefined);
-  const avgDays = allDays.length ? (allDays.reduce((a,b)=>a+b,0)/allDays.length).toFixed(1) : '—';
-  const bugs = tasks.filter(t => t.is_bug).length;
-  document.getElementById('grp-metrics').innerHTML = [
-    { label:'ВСЕГО ЗАДАЧ', val: total, sub: '' },
-    { label:'СРЕДНЕЕ ВРЕМЯ', val: avgDays, sub: allDays.length ? 'дней на задачу' : '' },
-    { label:'ОШИБКИ В ПРОДЕ', val: bugs, sub: total ? `${Math.round(bugs/total*100)}% от всех` : '', red: bugs>0 },
-  ].map(m => `<div class="metric">
-    <div class="metric-label">${m.label}</div>
-    <div class="metric-val"${m.red ? ' style="color:var(--red)"' : ''}>${m.val}</div>
-    ${m.sub ? `<div class="metric-sub">${m.sub}</div>` : ''}
-  </div>`).join('');
-
-  // Chart: by func_group (uses base = getActiveTasks(), not tab-local filtered)
-  const fgMap = {};
-  base.forEach(t => { if (t.func_group) fgMap[t.func_group] = (fgMap[t.func_group]||0)+1; });
-  const fgKeys = Object.keys(fgMap).sort((a,b) => fgMap[b]-fgMap[a]);
-  destroyChart('grp-c-groups');
-  const ctxFg = document.getElementById('grp-c-groups').getContext('2d');
-  const fgH = Math.max(160, fgKeys.length * 30);
-  document.getElementById('grp-c-groups').style.height = fgH + 'px';
-  charts['grp-c-groups'] = new Chart(ctxFg, {
-    type: 'bar',
-    data: { labels: fgKeys, datasets: [{ data: fgKeys.map(k=>fgMap[k]), backgroundColor: '#378ADD', borderRadius:4 }] },
-    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false} },
-      scales:{ x:{grid:{display:false}}, y:{grid:{display:false},ticks:{font:{size:11}}} } }
-  });
-
-  // Chart: by support_line
-  const slMap = {};
-  base.forEach(t => { if (t.support_line) slMap[t.support_line] = (slMap[t.support_line]||0)+1; });
-  const slKeys = Object.keys(slMap).sort((a,b) => slMap[b]-slMap[a]);
-  destroyChart('grp-c-lines');
-  const ctxSl = document.getElementById('grp-c-lines').getContext('2d');
-  const slH = Math.max(160, slKeys.length * 30);
-  document.getElementById('grp-c-lines').style.height = slH + 'px';
-  charts['grp-c-lines'] = new Chart(ctxSl, {
-    type: 'bar',
-    data: { labels: slKeys, datasets: [{ data: slKeys.map(k=>slMap[k]), backgroundColor: '#1D9E75', borderRadius:4 }] },
-    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false} },
-      scales:{ x:{grid:{display:false}}, y:{grid:{display:false},ticks:{font:{size:11}}} } }
-  });
-
-  // Task table
-  document.getElementById('grp-table-body').innerHTML = tasks.map(t => {
-    const badge = t.is_bug ? `<span class="badge badge-bug">Ошибка</span> ` : '';
-    return `<tr>
-      <td style="color:var(--text-3);white-space:nowrap;font-size:11px">${t.id}</td>
-      <td>${badge}${t.title}</td>
-      <td style="white-space:nowrap">${t.func_group||'—'}</td>
-      <td style="white-space:nowrap">${t.support_line||'—'}</td>
-      <td style="white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis">${t.assignee||'—'}</td>
-      <td style="white-space:nowrap">${t.completed ? t.completed.slice(5).replace('-','.') : '—'}</td>
-      <td style="text-align:center">${t.days ?? '—'}</td>
-    </tr>`;
-  }).join('');
-}
 
 document.addEventListener('DOMContentLoaded', checkDB);
 </script>
