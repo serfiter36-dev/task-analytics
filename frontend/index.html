@@ -139,6 +139,9 @@
       .charts-2 { grid-template-columns: 1fr; }
       .leader-stats { gap: 10px; }
     }
+    .btn-proj.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .legend-toggle { margin-left:auto; background:none; border:0.5px solid var(--border); border-radius:var(--radius-sm); padding:2px 6px; cursor:pointer; color:var(--text-2); font-size:13px; line-height:1; }
+    .legend-toggle:hover, .legend-toggle.active { background:var(--bg); color:var(--text); }
   </style>
 </head>
 <body>
@@ -172,6 +175,12 @@
       </div>
       <input type="file" id="fileInput" accept=".xlsx,.csv" style="display:none" onchange="handleFile(this.files[0])">
 
+      <div style="display:flex;gap:8px;justify-content:center;align-items:center;margin-bottom:16px;">
+        <span style="font-size:12px;color:var(--text-2);">Проект:</span>
+        <button class="btn btn-proj active" data-proj="Евро" onclick="selectProject('Евро',this)">Евро</button>
+        <button class="btn btn-proj" data-proj="Эко" onclick="selectProject('Эко',this)">Эко</button>
+      </div>
+
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
           <i class="ti ti-upload"></i> Выбрать файл
@@ -197,8 +206,11 @@
           </span>
           <span id="db-count" style="font-size:12px; color:var(--accent); font-weight:500;"></span>
         </div>
-        <button class="btn btn-primary" onclick="loadFromDB()" style="width:100%; justify-content:center;">
+        <button class="btn btn-primary" onclick="loadFromDB()" style="width:100%; justify-content:center; margin-bottom:8px;">
           <i class="ti ti-download"></i> Загрузить из базы данных
+        </button>
+        <button class="btn" onclick="clearDB()" style="width:100%; justify-content:center; color:var(--red); border-color:var(--red);">
+          <i class="ti ti-trash"></i> Очистить базу данных
         </button>
       </div>
     </div>
@@ -225,6 +237,11 @@
         <option>Сложная</option>
         <option>Очень сложная</option>
       </select>
+      <select id="g-project" onchange="renderAll()" style="font-size:13px;padding:6px 12px;border-radius:var(--radius-sm);border:0.5px solid var(--border);background:var(--surface);color:var(--text);">
+        <option value="">Все проекты</option>
+        <option>Евро</option>
+        <option>Эко</option>
+      </select>
       <div class="ms-wrap" id="ms-assignee" style="display:none">
         <button class="ms-btn" onclick="toggleMs('ms-assignee');event.stopPropagation()">
           <span id="ms-assignee-label">Все исполнители</span>
@@ -238,6 +255,20 @@
           <i class="ti ti-chevron-down" style="font-size:11px"></i>
         </button>
         <div class="ms-dropdown" id="ms-author-list"></div>
+      </div>
+      <div class="ms-wrap" id="ms-func-group" style="display:none">
+        <button class="ms-btn" onclick="toggleMs('ms-func-group');event.stopPropagation()">
+          <span id="ms-func-group-label">Все группы</span>
+          <i class="ti ti-chevron-down" style="font-size:11px"></i>
+        </button>
+        <div class="ms-dropdown" id="ms-func-group-list"></div>
+      </div>
+      <div class="ms-wrap" id="ms-support-line" style="display:none">
+        <button class="ms-btn" onclick="toggleMs('ms-support-line');event.stopPropagation()">
+          <span id="ms-support-line-label">Все линии</span>
+          <i class="ti ti-chevron-down" style="font-size:11px"></i>
+        </button>
+        <div class="ms-dropdown" id="ms-support-line-list"></div>
       </div>
       <button class="btn" id="btn-ai" onclick="runAIAnalysis()" style="display:none">
         <i class="ti ti-brain" aria-hidden="true"></i> Оценить сложность (AI)
@@ -256,19 +287,24 @@
       <div class="tab" onclick="switchTab('leaders',this)">Лидерборд</div>
       <div class="tab" onclick="switchTab('tasks',this)">Все задачи</div>
       <div class="tab" onclick="switchTab('employee',this)">Аналитика сотрудника</div>
+      <div class="tab" onclick="switchTab('groups',this)">Группы</div>
     </div>
 
     <!-- CHARTS TAB -->
     <div id="tab-charts">
       <div class="charts-2">
         <div class="chart-card">
-          <div class="chart-title"><i class="ti ti-chart-bar"></i> Задачи по исполнителям</div>
-          <div id="leg-assignee" class="legend"></div>
+          <div class="chart-title"><i class="ti ti-chart-bar"></i> Задачи по исполнителям
+            <button class="legend-toggle" onclick="toggleLegend('leg-assignee', this)" title="Показать/скрыть список"><i class="ti ti-list"></i></button>
+          </div>
+          <div id="leg-assignee" class="legend" style="display:none"></div>
           <div style="position:relative;height:220px"><canvas id="c-assignee" role="img" aria-label="Задачи по исполнителям"></canvas></div>
         </div>
         <div class="chart-card">
-          <div class="chart-title"><i class="ti ti-users"></i> Задачи по авторам</div>
-          <div id="leg-author" class="legend"></div>
+          <div class="chart-title"><i class="ti ti-users"></i> Задачи по авторам
+            <button class="legend-toggle" onclick="toggleLegend('leg-author', this)" title="Показать/скрыть список"><i class="ti ti-list"></i></button>
+          </div>
+          <div id="leg-author" class="legend" style="display:none"></div>
           <div style="position:relative;height:220px"><canvas id="c-author" role="img" aria-label="Задачи по авторам"></canvas></div>
         </div>
         <div class="chart-card full">
@@ -343,6 +379,9 @@
             <tr>
               <th>ID</th>
               <th style="min-width:220px">Название</th>
+              <th>Проект</th>
+              <th>Группа</th>
+              <th>Линия</th>
               <th>Автор</th>
               <th>Исполнитель</th>
               <th>Создана</th>
@@ -398,6 +437,45 @@
       </div>
     </div>
 
+    <!-- GROUPS TAB -->
+    <div id="tab-groups" style="display:none">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
+        <select id="grp-fg-select" onchange="renderGroupsTab()" style="font-size:13px;padding:6px 12px;border-radius:var(--radius-sm);border:0.5px solid var(--border);background:var(--surface);color:var(--text);min-width:220px">
+          <option value="">Все функциональные группы</option>
+        </select>
+        <select id="grp-sl-select" onchange="renderGroupsTab()" style="font-size:13px;padding:6px 12px;border-radius:var(--radius-sm);border:0.5px solid var(--border);background:var(--surface);color:var(--text);min-width:200px">
+          <option value="">Все линии поддержки</option>
+        </select>
+      </div>
+      <div class="metrics" id="grp-metrics" style="margin-bottom:14px;grid-template-columns:repeat(3,1fr)"></div>
+      <div class="charts-2" style="margin-bottom:14px">
+        <div class="chart-card">
+          <div class="chart-title"><i class="ti ti-category"></i> Задачи по функциональным группам</div>
+          <div style="position:relative;min-height:160px"><canvas id="grp-c-groups" role="img" aria-label="Задачи по группам"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title"><i class="ti ti-layers"></i> Задачи по линиям поддержки</div>
+          <div style="position:relative;min-height:160px"><canvas id="grp-c-lines" role="img" aria-label="Задачи по линиям"></canvas></div>
+        </div>
+      </div>
+      <div class="chart-card table-wrap" style="margin-bottom:14px">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th style="min-width:200px">Название</th>
+              <th>Группа</th>
+              <th>Линия</th>
+              <th>Исполнитель</th>
+              <th>Закрыта</th>
+              <th style="text-align:center">Дней</th>
+            </tr>
+          </thead>
+          <tbody id="grp-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
   </div><!-- /dashboard -->
 </div><!-- /container -->
 
@@ -414,7 +492,32 @@ let _baseData = null;
 let charts = {};
 let filteredByComplexity = null;
 let selectedAssignees = new Set();
+let selectedProject = 'Евро';
+
+function selectProject(p, el) {
+  selectedProject = p;
+  document.querySelectorAll('.btn-proj').forEach(b => b.classList.toggle('active', b.dataset.proj === p));
+}
 let selectedAuthors = new Set();
+let selectedFuncGroups = new Set();
+let selectedSupportLines = new Set();
+
+const MS_ALL_LABELS = {
+  'ms-assignee':    'Все исполнители',
+  'ms-author':      'Все авторы',
+  'ms-func-group':  'Все группы',
+  'ms-support-line':'Все линии',
+};
+const MS_SHORT_LABELS = {
+  'ms-assignee':    'Исполнители',
+  'ms-author':      'Авторы',
+  'ms-func-group':  'Группы',
+  'ms-support-line':'Линии',
+};
+function getMsSet(id) {
+  return { 'ms-assignee': selectedAssignees, 'ms-author': selectedAuthors,
+           'ms-func-group': selectedFuncGroups, 'ms-support-line': selectedSupportLines }[id];
+}
 
 function toggleMs(id) {
   const wrap = document.getElementById(id);
@@ -440,27 +543,27 @@ function buildMs(id, items, selectedSet, allLabel) {
 function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function msToggleItem(id, cb) {
-  const set = id === 'ms-assignee' ? selectedAssignees : selectedAuthors;
+  const set = getMsSet(id);
   if (cb.checked) set.add(cb.value); else set.delete(cb.value);
   const allCb = document.querySelector(`#${id}-list input[data-all]`);
   if (allCb) allCb.checked = set.size === 0;
-  updateMsLabel(id, set, id === 'ms-assignee' ? 'Все исполнители' : 'Все авторы');
+  updateMsLabel(id, set, MS_ALL_LABELS[id] || 'Все');
   renderAll();
 }
 
 function msToggleAll(id, cb) {
-  const set = id === 'ms-assignee' ? selectedAssignees : selectedAuthors;
+  const set = getMsSet(id);
   set.clear();
   document.querySelectorAll(`#${id}-list input:not([data-all])`).forEach(c => c.checked = false);
   cb.checked = true;
-  updateMsLabel(id, set, id === 'ms-assignee' ? 'Все исполнители' : 'Все авторы');
+  updateMsLabel(id, set, MS_ALL_LABELS[id] || 'Все');
   renderAll();
 }
 
 function updateMsLabel(id, set, allLabel) {
   const el = document.getElementById(id + '-label');
   if (!el) return;
-  const base = id === 'ms-assignee' ? 'Исполнители' : 'Авторы';
+  const base = MS_SHORT_LABELS[id] || 'Выбрано';
   el.textContent = set.size === 0 ? allLabel : `${base} (${set.size})`;
   document.getElementById(id)?.classList.toggle('ms-active', set.size > 0);
 }
@@ -484,6 +587,7 @@ async function handleFile(file) {
 
   const form = new FormData();
   form.append('file', file);
+  form.append('project', selectedProject);
 
   try {
     const res = await fetch(`${API_URL}/api/upload`, { method: 'POST', body: form });
@@ -491,15 +595,23 @@ async function handleFile(file) {
       const err = await res.json();
       throw new Error(err.detail || 'Ошибка сервера');
     }
-    appData = await res.json();
+    await res.json(); // задачи сохранены в БД
+    // Загружаем из БД чтобы показать все проекты вместе
+    const dbRes = await fetch(`${API_URL}/api/tasks`);
+    if (!dbRes.ok) throw new Error('Не удалось загрузить данные из базы');
+    appData = await dbRes.json();
+    appData.tasks.forEach(t => t.is_bug = !!t.is_bug);
     _baseData = appData;
     fillMonthSelect();
-    document.getElementById('file-badge').textContent = file.name;
-    document.getElementById('nav-hint').textContent = file.name;
+    document.getElementById('file-badge').textContent = 'База данных';
+    document.getElementById('nav-hint').textContent = file.name + ' загружен';
     document.getElementById('btn-reset').style.display = 'flex';
     hide('loading');
     show('dashboard');
+    const hasComplexity = appData.tasks.some(t => t.complexity);
     document.getElementById('btn-ai').style.display = 'flex';
+    document.getElementById('btn-ai').textContent = '';
+    document.getElementById('btn-ai').innerHTML = `<i class="ti ti-brain" aria-hidden="true"></i> ${hasComplexity ? 'Переоценить (AI)' : 'Оценить сложность (AI)'}`;
     renderAll();
   } catch (e) {
     hide('loading');
@@ -515,15 +627,27 @@ function resetApp() {
   document.getElementById('btn-reset').style.display = 'none';
   document.getElementById('nav-hint').textContent = '';
   document.getElementById('g-month').innerHTML = '<option value="">Все месяцы</option>';
+  document.getElementById('g-project').value = '';
   selectedAssignees.clear();
   selectedAuthors.clear();
+  selectedFuncGroups.clear();
+  selectedSupportLines.clear();
   document.getElementById('ms-assignee').style.display = 'none';
   document.getElementById('ms-author').style.display = 'none';
+  document.getElementById('ms-func-group').style.display = 'none';
+  document.getElementById('ms-support-line').style.display = 'none';
   hide('dashboard');
   show('upload-section');
   Object.values(charts).forEach(c => c.destroy());
   charts = {};
   switchTabByName('charts');
+}
+
+function toggleLegend(id, btn) {
+  const el = document.getElementById(id);
+  const visible = el.style.display !== 'none';
+  el.style.display = visible ? 'none' : 'flex';
+  btn.classList.toggle('active', !visible);
 }
 
 function toggleHint() {
@@ -545,7 +669,7 @@ function show(id) {
 function hide(id) { document.getElementById(id).style.display = 'none'; }
 
 function switchTab(name, el) {
-  ['charts','leaders','tasks','employee'].forEach(t => {
+  ['charts','leaders','tasks','employee','groups'].forEach(t => {
     document.getElementById('tab-'+t).style.display = t===name ? 'block' : 'none';
   });
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -654,10 +778,16 @@ function getActiveTasks() {
   if (month) tasks = tasks.filter(t => t.completed && t.completed.startsWith(month));
   const cx = document.getElementById('g-complexity')?.value || '';
   if (cx) tasks = tasks.filter(t => t.complexity === cx);
+  const gp = document.getElementById('g-project')?.value || '';
+  if (gp) tasks = tasks.filter(t => t.project === gp);
   if (selectedAssignees.size > 0)
     tasks = tasks.filter(t => (t.assignee || '').split(',').map(a => a.trim()).some(a => selectedAssignees.has(a)));
   if (selectedAuthors.size > 0)
     tasks = tasks.filter(t => selectedAuthors.has(t.author));
+  if (selectedFuncGroups.size > 0)
+    tasks = tasks.filter(t => selectedFuncGroups.has(t.func_group));
+  if (selectedSupportLines.size > 0)
+    tasks = tasks.filter(t => selectedSupportLines.has(t.support_line));
   return tasks;
 }
 
@@ -671,6 +801,9 @@ function renderAll() {
   renderComplexityChart();
   showComplexityFilterIfReady();
   fillEmployeeSelect();
+  renderEmployeeTab();
+  fillGroupSelects();
+  renderGroupsTab();
 }
 
 // ── METRICS ─────────────────────────────────────────────────────────────
@@ -852,6 +985,13 @@ function fillFilters() {
   buildMs('ms-author', authors, selectedAuthors, 'Все авторы');
   document.getElementById('ms-assignee').style.display = 'inline-block';
   document.getElementById('ms-author').style.display = 'inline-block';
+
+  const funcGroups = [...new Set(allTasks.map(t => t.func_group).filter(Boolean))].sort();
+  const supportLines = [...new Set(allTasks.map(t => t.support_line).filter(Boolean))].sort();
+  buildMs('ms-func-group', funcGroups, selectedFuncGroups, 'Все группы');
+  buildMs('ms-support-line', supportLines, selectedSupportLines, 'Все линии');
+  document.getElementById('ms-func-group').style.display = funcGroups.length ? 'inline-block' : 'none';
+  document.getElementById('ms-support-line').style.display = supportLines.length ? 'inline-block' : 'none';
 }
 
 function renderComplexityChart() {
@@ -981,6 +1121,19 @@ async function checkDB() {
   } catch(e) {}
 }
 
+async function clearDB() {
+  if (!confirm('Удалить все задачи из базы данных?')) return;
+  try {
+    const res = await fetch(`${API_URL}/api/db/clear`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Ошибка сервера');
+    document.getElementById('db-hint').style.display = 'none';
+    document.getElementById('db-count').textContent = '';
+    showError('');
+  } catch(e) {
+    showError('Не удалось очистить базу: ' + e.message);
+  }
+}
+
 async function loadFromDB() {
   hide('upload-section');
   show('loading');
@@ -1054,6 +1207,9 @@ function renderTable() {
     return `<tr>
       <td style="color:var(--text-3);white-space:nowrap;font-size:11px">${t.id}</td>
       <td>${badge}${t.title}</td>
+      <td style="white-space:nowrap">${t.project || '—'}</td>
+      <td style="white-space:nowrap">${t.func_group || '—'}</td>
+      <td style="white-space:nowrap">${t.support_line || '—'}</td>
       <td style="white-space:nowrap">${t.author}</td>
       <td style="white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis">${t.assignee}</td>
       <td style="white-space:nowrap;color:var(--text-3)">${t.created ? t.created.slice(5).replace('-','.') : '—'}</td>
@@ -1082,7 +1238,7 @@ function renderEmployeeTab() {
   if (!name || !appData) { content.style.display = 'none'; return; }
   content.style.display = 'block';
 
-  const tasks = appData.tasks.filter(t => (t.assignee || '').includes(name));
+  const tasks = getActiveTasks().filter(t => (t.assignee || '').includes(name));
 
   // Metrics
   const days = tasks.map(t => t.days).filter(d => d !== null && d !== undefined);
@@ -1181,6 +1337,95 @@ function renderEmployeeTab() {
       <td style="white-space:nowrap">${t.completed ? t.completed.slice(5).replace('-','.') : '—'}</td>
       <td style="text-align:center">${t.days ?? '—'}</td>
       <td>${cxBadge}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── GROUPS TAB ───────────────────────────────────────────────────────────
+function fillGroupSelects() {
+  const tasks = (_baseData || appData)?.tasks || [];
+  const fgs = [...new Set(tasks.map(t => t.func_group).filter(Boolean))].sort();
+  const sls = [...new Set(tasks.map(t => t.support_line).filter(Boolean))].sort();
+
+  const fgSel = document.getElementById('grp-fg-select');
+  const slSel = document.getElementById('grp-sl-select');
+  const curFg = fgSel.value;
+  const curSl = slSel.value;
+
+  fgSel.innerHTML = '<option value="">Все функциональные группы</option>' +
+    fgs.map(v => `<option${v === curFg ? ' selected' : ''}>${escHtml(v)}</option>`).join('');
+  slSel.innerHTML = '<option value="">Все линии поддержки</option>' +
+    sls.map(v => `<option${v === curSl ? ' selected' : ''}>${escHtml(v)}</option>`).join('');
+}
+
+function renderGroupsTab() {
+  if (!appData) return;
+  let base = getActiveTasks();
+
+  const fgVal = document.getElementById('grp-fg-select')?.value || '';
+  const slVal = document.getElementById('grp-sl-select')?.value || '';
+  let tasks = base;
+  if (fgVal) tasks = tasks.filter(t => t.func_group === fgVal);
+  if (slVal) tasks = tasks.filter(t => t.support_line === slVal);
+
+  // Metrics
+  const total = tasks.length;
+  const allDays = tasks.map(t => t.days).filter(d => d !== null && d !== undefined);
+  const avgDays = allDays.length ? (allDays.reduce((a,b)=>a+b,0)/allDays.length).toFixed(1) : '—';
+  const bugs = tasks.filter(t => t.is_bug).length;
+  document.getElementById('grp-metrics').innerHTML = [
+    { label:'ВСЕГО ЗАДАЧ', val: total, sub: '' },
+    { label:'СРЕДНЕЕ ВРЕМЯ', val: avgDays, sub: allDays.length ? 'дней на задачу' : '' },
+    { label:'ОШИБКИ В ПРОДЕ', val: bugs, sub: total ? `${Math.round(bugs/total*100)}% от всех` : '', red: bugs>0 },
+  ].map(m => `<div class="metric">
+    <div class="metric-label">${m.label}</div>
+    <div class="metric-val"${m.red ? ' style="color:var(--red)"' : ''}>${m.val}</div>
+    ${m.sub ? `<div class="metric-sub">${m.sub}</div>` : ''}
+  </div>`).join('');
+
+  // Chart: by func_group (uses base = getActiveTasks(), not tab-local filtered)
+  const fgMap = {};
+  base.forEach(t => { if (t.func_group) fgMap[t.func_group] = (fgMap[t.func_group]||0)+1; });
+  const fgKeys = Object.keys(fgMap).sort((a,b) => fgMap[b]-fgMap[a]);
+  destroyChart('grp-c-groups');
+  const ctxFg = document.getElementById('grp-c-groups').getContext('2d');
+  const fgH = Math.max(160, fgKeys.length * 30);
+  document.getElementById('grp-c-groups').style.height = fgH + 'px';
+  charts['grp-c-groups'] = new Chart(ctxFg, {
+    type: 'bar',
+    data: { labels: fgKeys, datasets: [{ data: fgKeys.map(k=>fgMap[k]), backgroundColor: '#378ADD', borderRadius:4 }] },
+    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false} },
+      scales:{ x:{grid:{display:false}}, y:{grid:{display:false},ticks:{font:{size:11}}} } }
+  });
+
+  // Chart: by support_line
+  const slMap = {};
+  base.forEach(t => { if (t.support_line) slMap[t.support_line] = (slMap[t.support_line]||0)+1; });
+  const slKeys = Object.keys(slMap).sort((a,b) => slMap[b]-slMap[a]);
+  destroyChart('grp-c-lines');
+  const ctxSl = document.getElementById('grp-c-lines').getContext('2d');
+  const slH = Math.max(160, slKeys.length * 30);
+  document.getElementById('grp-c-lines').style.height = slH + 'px';
+  charts['grp-c-lines'] = new Chart(ctxSl, {
+    type: 'bar',
+    data: { labels: slKeys, datasets: [{ data: slKeys.map(k=>slMap[k]), backgroundColor: '#1D9E75', borderRadius:4 }] },
+    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false} },
+      scales:{ x:{grid:{display:false}}, y:{grid:{display:false},ticks:{font:{size:11}}} } }
+  });
+
+  // Task table
+  document.getElementById('grp-table-body').innerHTML = tasks.map(t => {
+    const badge = t.is_bug ? `<span class="badge badge-bug">Ошибка</span> ` : '';
+    return `<tr>
+      <td style="color:var(--text-3);white-space:nowrap;font-size:11px">${t.id}</td>
+      <td>${badge}${t.title}</td>
+      <td style="white-space:nowrap">${t.func_group||'—'}</td>
+      <td style="white-space:nowrap">${t.support_line||'—'}</td>
+      <td style="white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis">${t.assignee||'—'}</td>
+      <td style="white-space:nowrap">${t.completed ? t.completed.slice(5).replace('-','.') : '—'}</td>
+      <td style="text-align:center">${t.days ?? '—'}</td>
     </tr>`;
   }).join('');
 }

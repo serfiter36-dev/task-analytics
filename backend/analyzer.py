@@ -38,20 +38,55 @@ COLUMN_MAP = {
     "дедлайн": "deadline",
     "due_date": "deadline",
     "deadline": "deadline",
+    # Функциональная группа
+    "функ. группа тек.исполнителя": "func_group",
+    "функц. группа тек.исполнителя": "func_group",
+    "функциональная группа": "func_group",
+    # Линия поддержки
+    "линия тек.исполнителя": "support_line",
+    "линия поддержки": "support_line",
     # Игнорируемые колонки (не нужны для анализа)
     "описание задачи": "description",
     "description": "description",
 }
 
 
+PARTIAL_MAP = [
+    (lambda c: 'функ' in c and 'групп' in c, 'func_group'),
+    (lambda c: 'линия' in c or 'линии' in c, 'support_line'),
+]
+
+
+def _s(val) -> str:
+    """Безопасно конвертирует pandas-значение в строку, NaN → пустая строка."""
+    if val is None:
+        return ""
+    try:
+        if pd.isna(val):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    return str(val).strip()
+
+
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Приводим названия колонок к стандартному виду."""
     df = df.copy()
-    df.columns = [str(c).strip().lower() for c in df.columns]
+    df.columns = [' '.join(str(c).split()).lower() for c in df.columns]
     rename = {}
     for col in df.columns:
         if col in COLUMN_MAP:
             rename[col] = COLUMN_MAP[col]
+    # Частичное сопоставление для колонок, не попавших в точный маппинг
+    mapped_targets = set(rename.values())
+    for col in df.columns:
+        if col in rename:
+            continue
+        for check, target in PARTIAL_MAP:
+            if target not in mapped_targets and check(col):
+                rename[col] = target
+                mapped_targets.add(target)
+                break
     return df.rename(columns=rename)
 
 
@@ -98,7 +133,7 @@ def fmt_date(d: datetime | None) -> str | None:
     return d.strftime("%Y-%m-%d") if d else None
 
 
-def analyze_tasks(df: pd.DataFrame) -> TasksResponse:
+def analyze_tasks(df: pd.DataFrame, project: str = 'Евро') -> TasksResponse:
     df = normalize_columns(df)
 
     tasks = []
@@ -153,7 +188,10 @@ def analyze_tasks(df: pd.DataFrame) -> TasksResponse:
             deadline=fmt_date(deadline),
             days=days,
             is_bug=is_bug,
-            description=str(row.get("description", "") or "").strip()[:1000],
+            description=_s(row.get("description"))[:1000],
+            project=project,
+            func_group=_s(row.get("func_group")),
+            support_line=_s(row.get("support_line")),
         ))
 
     all_days = [t.days for t in tasks if t.days is not None]

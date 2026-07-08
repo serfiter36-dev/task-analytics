@@ -4,14 +4,14 @@ load_dotenv()
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import io
 from typing import Optional
 from models import TasksResponse, StatsResponse
 from analyzer import analyze_tasks
-from database import init_db, save_tasks, get_all_tasks, update_complexity, get_stats
+from database import init_db, save_tasks, get_all_tasks, update_complexity, get_stats, clear_all_tasks
 init_db()
 
 app = FastAPI(title="Task Analytics API", version="1.0.0")
@@ -30,7 +30,7 @@ def root():
 
 
 @app.post("/api/upload", response_model=TasksResponse)
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(file: UploadFile = File(...), project: str = Form('Евро')):
     """Принимает .xlsx или .csv, возвращает список задач + статистику."""
     if not file.filename.endswith((".xlsx", ".csv")):
         raise HTTPException(400, "Поддерживаются только .xlsx и .csv файлы")
@@ -45,7 +45,7 @@ async def upload_file(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(422, f"Не удалось прочитать файл: {e}")
 
-    result = analyze_tasks(df)
+    result = analyze_tasks(df, project=project)
     save_tasks(result.tasks)
     return result
 
@@ -145,6 +145,11 @@ async def analyze_complexity(payload: dict):
 
     return {"results": results}
 
+
+@app.delete("/api/db/clear")
+def clear_db():
+    clear_all_tasks()
+    return {"status": "ok"}
 
 @app.get("/api/health")
 def health():

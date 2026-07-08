@@ -15,6 +15,9 @@ class Task(BaseModel):
     description: str = ""
     complexity: str = ""
     reason: str = ""
+    project: str = "Евро"
+    func_group: str = ""
+    support_line: str = ""
 
 
 class AssigneeStats(BaseModel):
